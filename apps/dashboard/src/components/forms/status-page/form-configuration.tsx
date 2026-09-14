@@ -54,6 +54,25 @@ const schema = z.object({
   ),
 });
 
+/**
+ * Every IANA zone the runtime knows, straight from Intl — no curated list to
+ * drift. "UTC" is pinned first because it is the default and the one most
+ * pages want; the rest are alphabetical as Intl returns them.
+ *
+ * `supportedValuesOf` is ES2022 and present in every browser this dashboard
+ * targets, but fall back to a bare ["UTC"] rather than throwing if it is not.
+ */
+const TIME_ZONES: string[] = (() => {
+  try {
+    return [
+      "UTC",
+      ...Intl.supportedValuesOf("timeZone").filter((z) => z !== "UTC"),
+    ];
+  } catch {
+    return ["UTC"];
+  }
+})();
+
 const configurationSchema = z
   .object({
     type: z.enum(["manual", "absolute"]),
@@ -64,6 +83,7 @@ const configurationSchema = z
       .union([z.literal(30), z.literal(45)])
       .or(z.literal("30").or(z.literal("45")))
       .nullish(),
+    timezone: z.string().nullish(),
   })
   .refine(
     (data) => {
@@ -310,6 +330,33 @@ export function FormConfiguration({
                         {["30", "45"].map((days) => (
                           <SelectItem key={days} value={days}>
                             {days} days
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="configuration.timezone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Time zone</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value ?? "UTC"}
+                    >
+                      <FormControl>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select a time zone" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {TIME_ZONES.map((tz) => (
+                          <SelectItem key={tz} value={tz}>
+                            {tz}
                           </SelectItem>
                         ))}
                       </SelectContent>

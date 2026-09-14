@@ -153,6 +153,14 @@ export function FormComponentsUpdate() {
               days: (values.configuration.days
                 ? Number(values.configuration.days)
                 : undefined) as PageConfiguration["days"],
+              // Left undefined when unset so the write schema skips it and the
+              // stored value is untouched. The service input validates the zone
+              // strictly (unlike the lenient read schema), so a bad one comes
+              // back as a zod error on the form rather than silently saving UTC.
+              timezone:
+                typeof values.configuration.timezone === "string"
+                  ? values.configuration.timezone
+                  : undefined,
             },
           });
         }}

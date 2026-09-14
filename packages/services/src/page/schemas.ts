@@ -3,6 +3,7 @@ import { pageAccessTypes } from "@openstatus/db/src/schema/pages/constants";
 import {
   customDomainSchema,
   customThemeWriteSchema,
+  isValidTimeZone,
   pageConfigurationSchema,
   slugSchema,
 } from "@openstatus/db/src/schema/pages/validation";
@@ -185,6 +186,22 @@ export const UpdatePageConfigurationInput = z.object({
       uptime: z.undefined().or(pageConfigurationSchema.shape.uptime),
       theme: z.undefined().or(pageConfigurationSchema.shape.theme),
       days: z.undefined().or(pageConfigurationSchema.shape.days),
+      /**
+       * Deliberately NOT `pageConfigurationSchema.shape.timezone`. That one
+       * carries `.catch("UTC")` so a bad value already in the column degrades
+       * instead of 404ing the public page on read. Reusing it here would make a
+       * typo silently save as UTC with no error shown.
+       *
+       * On the WRITE path an unknown zone must be rejected so the form can say
+       * so — which is the whole reason the read path is allowed to be lenient.
+       */
+      timezone: z
+        .undefined()
+        .or(
+          z
+            .string()
+            .refine(isValidTimeZone, { message: "Unknown IANA time zone" }),
+        ),
     })
     .nullish(),
 });
