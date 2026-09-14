@@ -16,7 +16,7 @@ import { FormSlug } from "@/components/forms/settings/form-slug";
 import { FormWorkspace } from "@/components/forms/settings/form-workspace";
 import { useTRPC } from "@/lib/trpc/client";
 
-const BASE_URL = "https://app.openstatus.dev/invite";
+const BASE_URL = "https://stats.messangi.me/invite";
 
 export default function Page() {
   const trpc = useTRPC();

@@ -50,7 +50,7 @@ export function WorkspaceSwitcher({ className, side }: WorkspaceSwitcherProps) {
               <div className="bg-sidebar-primary flex aspect-square size-8 items-center justify-center rounded-lg">
                 <div className="size-8 overflow-hidden rounded-lg">
                   <img
-                    src={`https://api.dicebear.com/9.x/glass/svg?seed=${workspace.slug}`}
+                    src={"https://avatars.githubusercontent.com/u/227890983?s=200&v=4"}
                     alt="avatar"
                   />
                 </div>
