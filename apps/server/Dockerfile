@@ -47,6 +47,7 @@ RUN \
     --mount=type=bind,target=packages/importers/package.json,source=packages/importers/package.json \
     --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
     <<EOF
+npm i -g corepack@latest
 corepack enable pnpm
 pnpm install --prod --frozen-lockfile --filter=@openstatus/server... --loglevel debug
 EOF

@@ -44,6 +44,7 @@ RUN \
     --mount=type=bind,target=packages/status-fetcher/package.json,source=packages/status-fetcher/package.json \
     --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
     <<EOF
+npm i -g corepack@latest
 corepack enable pnpm
 pnpm install --prod --frozen-lockfile --filter=@openstatus/workflows... --loglevel debug
 EOF
