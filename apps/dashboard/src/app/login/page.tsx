@@ -1,6 +1,3 @@
-import { GitHubIcon } from "@openstatus/icons/brand";
-import { GoogleIcon } from "@openstatus/icons/brand";
-import { Separator } from "@openstatus/ui/components/ui/separator";
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { SearchParams } from "nuqs/server";
@@ -8,10 +5,11 @@ import type { SearchParams } from "nuqs/server";
 import { signIn } from "@/lib/auth";
 
 import { LoginButton } from "./_components/login-button";
-import MagicLinkForm from "./_components/magic-link-form";
 import { SsoForm } from "./_components/sso-form";
 import { searchParamsCache } from "./search-params";
 
+// Messangi self-host: only Keycloak OIDC ("Sign in with Messangi SSO") is offered.
+// The Magic-Link, GitHub, and Google options are removed from the login UI.
 const hasWorkOS = Boolean(
   process.env.AUTH_WORKOS_ID && process.env.AUTH_WORKOS_SECRET,
 );
@@ -50,35 +48,6 @@ export default async function Page(props: {
         </p>
       ) : null}
       <div className="grid gap-4 p-4">
-        {process.env.NODE_ENV === "development" ||
-        process.env.SELF_HOST === "true" ? (
-          <div className="grid gap-4">
-            <MagicLinkForm />
-            <Separator />
-          </div>
-        ) : null}
-        <form
-          action={async () => {
-            "use server";
-            await signIn("github", { redirectTo: redirectTo ?? undefined });
-          }}
-          className="w-full"
-        >
-          <LoginButton type="submit" provider="github">
-            Sign in with GitHub <GitHubIcon className="ml-2 h-4 w-4" />
-          </LoginButton>
-        </form>
-        <form
-          action={async () => {
-            "use server";
-            await signIn("google", { redirectTo: redirectTo ?? undefined });
-          }}
-          className="w-full"
-        >
-          <LoginButton type="submit" provider="google">
-            Sign in with Google <GoogleIcon className="ml-2 h-4 w-4" />
-          </LoginButton>
-        </form>
         {process.env.AUTH_OIDC_ISSUER ? (
           <form
             action={async () => {
