@@ -257,7 +257,7 @@ export async function Step14Days(userId: number, workFlowRunTimestamp: number) {
       email: {
         to: user.email,
         subject: "Your OpenStatus monitors will be paused in 14 days",
-        from: "Thibault From OpenStatus <thibault@notifications.openstatus.dev>",
+        from: "Thibault From OpenStatus <thibault@notifications.messangi.me>",
         reply_to: "thibault@openstatus.dev",
         html: monitorDeactivationEmail({
           date: new Date(
@@ -305,7 +305,7 @@ export async function Step3Days(userId: number, workFlowRunTimestamp: number) {
       email: {
         to: user.email,
         subject: "Your OpenStatus monitors will be paused in 3 days",
-        from: "Thibault From OpenStatus <thibault@notifications.openstatus.dev>",
+        from: "Thibault From OpenStatus <thibault@notifications.messangi.me>",
         reply_to: "thibault@openstatus.dev",
         html: monitorDeactivationEmail({
           date: new Date(
@@ -376,7 +376,7 @@ export async function StepPaused(userId: number, workFlowRunTimestamp: number) {
         email: {
           to: currentUser.email,
           subject: "Your monitors have been paused",
-          from: "Thibault From OpenStatus <thibault@notifications.openstatus.dev>",
+          from: "Thibault From OpenStatus <thibault@notifications.messangi.me>",
           reply_to: "thibault@openstatus.dev",
           html: monitorPausedEmail(),
         },

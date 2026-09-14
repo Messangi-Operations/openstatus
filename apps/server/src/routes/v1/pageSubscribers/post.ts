@@ -112,7 +112,7 @@ export function registerPostPageSubscriber(api: typeof pageSubscribersApi) {
         link,
         page: _page.title,
       }),
-      from: "OpenStatus <notification@notifications.openstatus.dev>",
+      from: "OpenStatus <notification@notifications.messangi.me>",
       to: [normalizedEmail],
       subject: "Verify your subscription",
     });
