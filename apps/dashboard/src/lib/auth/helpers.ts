@@ -34,7 +34,11 @@ export async function createUser(data: AdapterUser) {
     .get();
 
   // Auto-join the shared workspace (member) instead of creating a solo one.
-  if (domainOk && Number.isInteger(sharedWorkspaceId) && sharedWorkspaceId > 0) {
+  if (
+    domainOk &&
+    Number.isInteger(sharedWorkspaceId) &&
+    sharedWorkspaceId > 0
+  ) {
     await db
       .insert(usersToWorkspaces)
       .values({

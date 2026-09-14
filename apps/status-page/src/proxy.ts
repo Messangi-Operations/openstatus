@@ -120,8 +120,9 @@ export default auth(async (req) => {
     isSelfHosted,
     requestUrl: req.url,
     origin: req.nextUrl.origin,
-    cookiePassword: req.cookies.get(createProtectedCookieKey(initialRoute.prefix))
-      ?.value,
+    cookiePassword: req.cookies.get(
+      createProtectedCookieKey(initialRoute.prefix),
+    )?.value,
     queryPassword: url.searchParams.get("pw"),
     redirectParam: sanitizeRedirectParam(url.searchParams.get("redirect")),
     authEmail: req.auth?.user?.email,

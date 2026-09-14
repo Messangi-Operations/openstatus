@@ -48,7 +48,10 @@ export const columns: ColumnDef<Incident>[] = [
     cell: ({ row }) => {
       const u = row.original.acknowledgedByUser;
       const name =
-        u && (u.name || [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email);
+        u &&
+        (u.name ||
+          [u.firstName, u.lastName].filter(Boolean).join(" ") ||
+          u.email);
       return (
         <div>
           <TableCellDate value={row.getValue("acknowledgedAt")} />
@@ -68,7 +71,10 @@ export const columns: ColumnDef<Incident>[] = [
     cell: ({ row }) => {
       const u = row.original.resolvedByUser;
       const name =
-        u && (u.name || [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email);
+        u &&
+        (u.name ||
+          [u.firstName, u.lastName].filter(Boolean).join(" ") ||
+          u.email);
       return (
         <div>
           <TableCellDate value={row.getValue("resolvedAt")} />
