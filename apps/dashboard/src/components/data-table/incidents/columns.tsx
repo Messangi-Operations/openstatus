@@ -45,7 +45,19 @@ export const columns: ColumnDef<Incident>[] = [
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Acknowledged" />
     ),
-    cell: ({ row }) => <TableCellDate value={row.getValue("acknowledgedAt")} />,
+    cell: ({ row }) => {
+      const u = row.original.acknowledgedByUser;
+      const name =
+        u && (u.name || [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email);
+      return (
+        <div>
+          <TableCellDate value={row.getValue("acknowledgedAt")} />
+          {name ? (
+            <div className="text-muted-foreground text-xs">{name}</div>
+          ) : null}
+        </div>
+      );
+    },
     enableHiding: false,
   },
   {
@@ -53,7 +65,19 @@ export const columns: ColumnDef<Incident>[] = [
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Resolved At" />
     ),
-    cell: ({ row }) => <TableCellDate value={row.getValue("resolvedAt")} />,
+    cell: ({ row }) => {
+      const u = row.original.resolvedByUser;
+      const name =
+        u && (u.name || [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email);
+      return (
+        <div>
+          <TableCellDate value={row.getValue("resolvedAt")} />
+          {name ? (
+            <div className="text-muted-foreground text-xs">{name}</div>
+          ) : null}
+        </div>
+      );
+    },
     enableHiding: false,
   },
   {

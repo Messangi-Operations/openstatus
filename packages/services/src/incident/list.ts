@@ -13,10 +13,12 @@ import {
   incidentTable,
   monitor,
   selectMonitorSchema,
+  selectUserSchema,
+  user,
 } from "@openstatus/db/src/schema";
 
 import type { DB, ServiceContext } from "../context";
-import type { Incident, Monitor } from "../types";
+import type { Incident, Monitor, User } from "../types";
 import { getIncidentInWorkspace } from "./internal";
 import {
   GetIncidentInput,
@@ -39,6 +41,8 @@ function periodToSince(period: IncidentListPeriod): Date {
 
 export type IncidentWithRelations = Incident & {
   monitor: Monitor | null;
+  acknowledgedByUser: User | null;
+  resolvedByUser: User | null;
 };
 
 export type ListIncidentsResult = {
@@ -82,10 +86,35 @@ async function enrichIncidentsBatch(
     }
   }
 
+  const userIdsSet = new Set<number>();
+  for (const r of rows) {
+    if (r.acknowledgedBy != null) userIdsSet.add(r.acknowledgedBy);
+    if (r.resolvedBy != null) userIdsSet.add(r.resolvedBy);
+  }
+  const userIds = Array.from(userIdsSet);
+
+  const userById = new Map<number, User>();
+  if (userIds.length > 0) {
+    const userRows = await db
+      .select()
+      .from(user)
+      .where(inArray(user.id, userIds))
+      .all();
+    for (const u of userRows) {
+      userById.set(u.id, selectUserSchema.parse(u));
+    }
+  }
+
   return rows.map((r) => ({
     ...r,
     monitor:
       r.monitorId != null ? (monitorById.get(r.monitorId) ?? null) : null,
+    acknowledgedByUser:
+      r.acknowledgedBy != null
+        ? (userById.get(r.acknowledgedBy) ?? null)
+        : null,
+    resolvedByUser:
+      r.resolvedBy != null ? (userById.get(r.resolvedBy) ?? null) : null,
   }));
 }
 
