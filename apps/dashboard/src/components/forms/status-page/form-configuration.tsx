@@ -83,7 +83,6 @@ const configurationSchema = z
       .union([z.literal(30), z.literal(45)])
       .or(z.literal("30").or(z.literal("45")))
       .nullish(),
-    timezone: z.string().nullish(),
   })
   .refine(
     (data) => {
@@ -346,7 +345,9 @@ export function FormConfiguration({
                     <FormLabel>Time zone</FormLabel>
                     <Select
                       onValueChange={field.onChange}
-                      defaultValue={field.value ?? "UTC"}
+                      defaultValue={
+                        typeof field.value === "string" ? field.value : "UTC"
+                      }
                     >
                       <FormControl>
                         <SelectTrigger className="w-full">

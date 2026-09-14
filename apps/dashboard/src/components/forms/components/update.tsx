@@ -153,10 +153,13 @@ export function FormComponentsUpdate() {
               days: (values.configuration.days
                 ? Number(values.configuration.days)
                 : undefined) as PageConfiguration["days"],
-              // Left undefined when unset so the write schema skips it and the
-              // stored value is untouched. The service input validates the zone
-              // strictly (unlike the lenient read schema), so a bad one comes
-              // back as a zod error on the form rather than silently saving UTC.
+              // `getPage` parses through `selectPageSchema`, whose timezone
+              // transform fills in "UTC", so on this path the value is always a
+              // concrete string and the form re-sends what it displayed rather
+              // than omitting it. The guard covers the other callers, where the
+              // loose record type genuinely allows a non-string. The service
+              // input validates strictly (unlike the lenient read schema), so a
+              // bad zone is rejected instead of silently saving as UTC.
               timezone:
                 typeof values.configuration.timezone === "string"
                   ? values.configuration.timezone
