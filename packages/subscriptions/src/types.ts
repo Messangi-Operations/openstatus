@@ -8,6 +8,8 @@ export interface Subscription {
   pageName: string;
   pageSlug: string;
   customDomain?: string | null;
+  /** IANA zone from the page's configuration; renders timestamps in emails. Defaults to UTC. */
+  pageTimeZone?: string;
   componentIds: number[]; // Empty = entire page
 
   // Only ONE identifier populated based on channelType

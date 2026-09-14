@@ -139,6 +139,8 @@ export async function dispatchPageUpdate(pageUpdate: PageUpdate) {
       name: page.title,
       slug: page.slug,
       customDomain: page.customDomain,
+      // carries `timezone`, used to render timestamps in notification emails
+      configuration: page.configuration,
     })
     .from(page)
     .where(eq(page.id, pageUpdate.pageId))
@@ -170,6 +172,9 @@ export async function dispatchPageUpdate(pageUpdate: PageUpdate) {
       pageName: pageData.name,
       pageSlug: pageData.slug,
       customDomain: pageData.customDomain,
+      pageTimeZone:
+        (pageData.configuration as { timezone?: string } | null)?.timezone ??
+        "UTC",
       channelType: sub.channelType as "email" | "webhook" | "slack",
       email: sub.email ?? undefined,
       webhookUrl: sub.webhookUrl ?? undefined,

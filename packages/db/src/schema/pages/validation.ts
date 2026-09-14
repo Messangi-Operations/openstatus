@@ -121,6 +121,21 @@ export const insertPageSchema = createInsertSchema(page, {
 // the write path permits) leaks through and tanks downstream consumers that
 // expect a strict enum (e.g. the status-page layout falling back to "absolute"
 // barType and rendering manual-mode bars as empty).
+/**
+ * True when the runtime accepts `tz` as an IANA zone. `Intl.DateTimeFormat`
+ * throws RangeError on an unknown zone, so this is the only reliable check —
+ * there is no exhaustive list to compare against, and the supported set differs
+ * between runtimes.
+ */
+export function isValidTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export const pageConfigurationSchema = z.object({
   value: z
     .enum(["duration", "requests", "manual"])
@@ -143,6 +158,34 @@ export const pageConfigurationSchema = z.object({
     .union([z.literal(30), z.literal(45)])
     .nullish()
     .transform((v) => v ?? 45),
+  /**
+   * IANA zone used to render this page's timestamps and the timestamps in its
+   * subscriber notification emails. Defaults to UTC, which is the historical
+   * behaviour — a page that never sets this renders exactly as before.
+   *
+   * Per page rather than per viewer: one instance serves pages for different
+   * markets, an email is rendered once server-side and cannot adapt to its
+   * reader, and a fixed zone renders identically during SSR and hydration.
+   *
+   * `.refine` rejects an unknown zone so a future settings form can surface the
+   * error, but `.catch("UTC")` makes a bad value already in the column DEGRADE
+   * rather than fail the parse — same shape as `customTheme` below.
+   *
+   * That `.catch` is load-bearing, not defensive dressing. `pageConfigurationSchema`
+   * is parsed on the READ path, and a parse failure there is not a validation
+   * message — it 404s the page: `proxy.ts` treats a failed `selectPageSchema` as
+   * an unresolved host (taking down `/unsubscribe` and `/manage` with it), and
+   * `statusPage.ts` returns null into a `notFound()`. Until a validated write
+   * path exists, `timezone` is set by hand in SQL, so a typo like `America/Bogotá`
+   * would take the public page down while the emails quietly fell back to UTC —
+   * nothing would connect the outage to the typo.
+   */
+  timezone: z
+    .string()
+    .refine(isValidTimeZone, { message: "Unknown IANA time zone" })
+    .nullish()
+    .transform((v) => v ?? "UTC")
+    .catch("UTC"),
 });
 export type PageConfiguration = z.infer<typeof pageConfigurationSchema>;
 

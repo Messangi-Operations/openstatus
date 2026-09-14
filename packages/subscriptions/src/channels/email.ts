@@ -90,6 +90,12 @@ export async function sendEmailNotifications(
       firstSub.pageName,
       firstSub.pageSlug,
       firstSub.customDomain ?? null,
+      // Part of the rendered body: the Date row is formatted in this zone, so a
+      // zone change must produce a new idempotency key. Without it, re-sending an
+      // update after changing the page's timezone keeps the old key, Resend
+      // answers 409 invalid_idempotent_request, that is classified
+      // non-retryable, and the send is swallowed — no email, no error.
+      firstSub.pageTimeZone ?? null,
       pageUpdate.title,
       pageUpdate.status,
       pageUpdate.message,
@@ -107,6 +113,7 @@ export async function sendEmailNotifications(
     pageTitle: firstSub.pageName,
     pageSlug: firstSub.pageSlug,
     customDomain: firstSub.customDomain,
+    timeZone: firstSub.pageTimeZone,
     reportTitle: pageUpdate.title,
     status: pageUpdate.status,
     message: pageUpdate.message,

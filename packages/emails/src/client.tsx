@@ -53,6 +53,60 @@ function chunk<T>(array: T[], size: number): T[][] {
   return result;
 }
 
+/**
+ * Render a notification timestamp in the page's own zone.
+ *
+ * An email is rendered once, server-side, so it cannot adapt to its reader —
+ * the page's configured zone is the only honest choice. Recipients are not
+ * engineers; a raw `2026-09-14T16:29:45.000Z` reads as a time in the future
+ * to someone whose clock says 11:29.
+ *
+ * `PageUpdate.date` is NOT always one ISO string: maintenance dispatch sends
+ * `"<fromISO> - <toISO>"` (see packages/subscriptions/src/dispatcher.ts), so
+ * split first and format each side. Anything unparseable is passed through
+ * untouched rather than rendered as "Invalid Date".
+ *
+ * An unknown zone throws RangeError in Intl, which would take the whole send
+ * down; fall back to the original string instead.
+ */
+export function isUsableTimeZone(tz?: string): tz is string {
+  if (!tz) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function formatNotificationDate(date: string, timeZone?: string) {
+  // An unknown zone throws RangeError in Intl. The schema validates on write,
+  // so this should be unreachable — but a bad value already in the column must
+  // not break the send. Degrade to UTC *formatting*, never back to a raw ISO
+  // string: an unreadable timestamp is the very thing this method exists to fix.
+  const tz = isUsableTimeZone(timeZone) ? timeZone : "UTC";
+  const one = (part: string) => {
+    const trimmed = part.trim();
+    const d = new Date(trimmed);
+    if (Number.isNaN(d.getTime())) return trimmed;
+    // NOTE: explicit components, not dateStyle/timeStyle — Intl throws
+    // "Invalid option" if those are combined with timeZoneName, and we want
+    // the zone label so the reader knows which clock this is.
+    return d.toLocaleString("en-US", {
+      timeZone: tz,
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZoneName: "short",
+    });
+  };
+  return date.includes(" - ")
+    ? date.split(" - ").map(one).join(" - ")
+    : one(date);
+}
+
 export class EmailClient {
   public readonly client: Resend;
   // Base delay for the per-batch send retry. Overridable so tests can run the
@@ -183,6 +237,8 @@ export class EmailClient {
       subscribers: Array<{ email: string; token: string }>;
       pageSlug: string;
       customDomain?: string | null;
+      /** IANA zone from the page's configuration. Omitted => UTC (previous behaviour). */
+      timeZone?: string;
       // Base key for Resend idempotency. The per-batch retry below would
       // otherwise re-send the whole chunk if a request succeeds server-side
       // but the response is lost. Must be stable across retries.
@@ -223,6 +279,7 @@ export class EmailClient {
                 react: (
                   <StatusReportEmail
                     {...req}
+                    date={formatNotificationDate(req.date, req.timeZone)}
                     unsubscribeUrl={unsubscribeUrl}
                     manageUrl={manageUrl}
                   />
