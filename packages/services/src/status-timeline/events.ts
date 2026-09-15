@@ -14,7 +14,12 @@ import {
   worstImpact,
 } from "@openstatus/db/src/schema";
 
-import { dayKeyIn, startOfDayBeforeIn } from "./local-day";
+import {
+  dayKeyIn,
+  dayLengthMsIn,
+  startOfDayBeforeIn,
+  startOfDayIn,
+} from "./local-day";
 
 export type MonitorComponentWithNonNullMonitor =
   PageComponentWithMonitorRelation & {
@@ -109,17 +114,19 @@ export function fillStatusDataFor45DaysNoop({
   errorDays,
   degradedDays,
   lookbackPeriod = 45,
+  tz = "UTC",
 }: {
   errorDays: number[];
   degradedDays: number[];
   lookbackPeriod?: number;
+  tz?: string;
 }): Array<StatusData> {
   const issueDays = [...errorDays, ...degradedDays];
-  // UTC day grid, matching fillStatusDataFor45Days, so synthetic days line up
+  // Same grid as fillStatusDataFor45Days, in the same zone, so the synthetic
+  // days line up with it rather than being re-keyed one bar off.
+  const now = new Date();
   const data: StatusData[] = Array.from({ length: lookbackPeriod }, (_, i) => {
-    const date = new Date();
-    date.setUTCDate(date.getUTCDate() - i);
-    date.setUTCHours(0, 0, 0, 0);
+    const date = startOfDayBeforeIn(now, tz, i);
     return {
       day: date.toISOString(),
       count: 1,
@@ -129,7 +136,7 @@ export function fillStatusDataFor45DaysNoop({
       monitorId: "1",
     };
   });
-  return fillStatusDataFor45Days(data, "1", lookbackPeriod);
+  return fillStatusDataFor45Days(data, "1", lookbackPeriod, tz);
 }
 
 export type ImpactInterval = {
@@ -466,24 +473,42 @@ export function getHighestPriorityStatus(
   return "empty";
 }
 
+/**
+ * The instants spanned by `date`'s calendar day in `tz`, as `[start, end]` with
+ * `end` inclusive to the millisecond.
+ *
+ * This replaces `setUTCHours(0,0,0,0)` / `setUTCHours(23,59,59,999)` and is
+ * byte-identical to them at `tz = "UTC"`: `startOfDayIn` IS `setUTCHours(0,…)`
+ * there, and a UTC day is always exactly 86_400_000 ms.
+ *
+ * `end` is derived from the day's LENGTH rather than from "23:59:59.999 local"
+ * because those two disagree exactly when it matters. A fall-back day genuinely
+ * runs 25 hours; an incident during the repeated hour belongs to that day, and
+ * an end pinned to local 23:59:59.999 would still be right — but a spring-
+ * forward day's would not, and neither survives being compared against instants.
+ * Length-derived ends tile the timeline with no gap and no overlap.
+ */
+export function dayWindowIn(
+  date: Date,
+  tz: string,
+): { start: number; end: number } {
+  const start = startOfDayIn(date, tz).getTime();
+  return { start, end: start + dayLengthMsIn(date, tz) - 1 };
+}
+
 // worst report impact for one day; null = legacy event (no impact rows)
 export function reportEventDayImpact(
   event: Event,
   date: Date,
+  tz = "UTC",
 ): PageComponentImpact | null {
   if (!event.impactIntervals) return null;
 
-  const startOfDay = new Date(date);
-  startOfDay.setUTCHours(0, 0, 0, 0);
-  const endOfDay = new Date(date);
-  endOfDay.setUTCHours(23, 59, 59, 999);
+  const { start, end } = dayWindowIn(date, tz);
 
   const overlapping = event.impactIntervals.filter((iv) => {
-    const end = iv.to ?? new Date();
-    return (
-      iv.from.getTime() <= endOfDay.getTime() &&
-      end.getTime() >= startOfDay.getTime()
-    );
+    const to = iv.to ?? new Date();
+    return iv.from.getTime() <= end && to.getTime() >= start;
   });
   return worstImpact(overlapping.map((iv) => iv.impact));
 }
@@ -492,26 +517,24 @@ export function reportEventDayImpact(
 export function reportEventDayStatus(
   event: Event,
   date: Date,
+  tz = "UTC",
 ): "success" | "degraded" | "error" {
-  const impact = reportEventDayImpact(event, date);
+  const impact = reportEventDayImpact(event, date, tz);
   return impact === null ? "degraded" : impactToStatusType(impact);
 }
 
 // Helper to check if date is within event range
-export function isDateWithinEvent(date: Date, event: Event): boolean {
-  const startOfDay = new Date(date);
-  startOfDay.setUTCHours(0, 0, 0, 0);
-
-  const endOfDay = new Date(date);
-  endOfDay.setUTCHours(23, 59, 59, 999);
+export function isDateWithinEvent(
+  date: Date,
+  event: Event,
+  tz = "UTC",
+): boolean {
+  const { start, end } = dayWindowIn(date, tz);
 
   const eventStart = new Date(event.from);
   const eventEnd = event.to ? new Date(event.to) : new Date();
 
-  return (
-    eventStart.getTime() <= endOfDay.getTime() &&
-    eventEnd.getTime() >= startOfDay.getTime()
-  );
+  return eventStart.getTime() <= end && eventEnd.getTime() >= start;
 }
 
 export type DayStatus =
@@ -526,13 +549,14 @@ export type DayStatus =
 export function resolveDayStatus(
   bucket: StatusData,
   events: Event[],
+  tz = "UTC",
 ): { status: DayStatus; impact?: PageComponentImpact } {
   const date = new Date(bucket.day);
-  const dayEvents = events.filter((e) => isDateWithinEvent(date, e));
+  const dayEvents = events.filter((e) => isDateWithinEvent(date, e, tz));
   const reports = dayEvents.filter((e) => e.type === "report");
 
   const dayImpacts = reports
-    .map((e) => reportEventDayImpact(e, date))
+    .map((e) => reportEventDayImpact(e, date, tz))
     .filter((i): i is PageComponentImpact => i !== null);
   const impact = dayImpacts.length > 0 ? worstImpact(dayImpacts) : undefined;
 
@@ -541,7 +565,7 @@ export function resolveDayStatus(
   }
 
   const reportsDayStatus = reports.length
-    ? getWorstVariant(reports.map((e) => reportEventDayStatus(e, date)))
+    ? getWorstVariant(reports.map((e) => reportEventDayStatus(e, date, tz)))
     : undefined;
   if (reportsDayStatus && reportsDayStatus !== "success") {
     return {

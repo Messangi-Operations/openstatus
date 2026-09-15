@@ -120,8 +120,8 @@ describe("fillStatusDataFor45Days — zoned grids", () => {
     ];
     const out = fillStatusDataFor45Days(data, "m1", 45, "America/Bogota");
     const matched = out.find((b) => b.count === 7);
-    expect(matched).toBeDefined();
-    expect(dayKeyIn(new Date(matched!.day), "America/Bogota")).toBe(
+    if (!matched) throw new Error("the day carrying the data was dropped");
+    expect(dayKeyIn(new Date(matched.day), "America/Bogota")).toBe(
       dayKeyIn(start, "America/Bogota"),
     );
   });

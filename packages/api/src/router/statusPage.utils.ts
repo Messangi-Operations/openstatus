@@ -10,12 +10,14 @@ import {
   type CoverageSegment,
   downtimeIntervals,
   type Event,
-  MS_PER_DAY,
   probeDowntimeIntervals,
   type StatusData,
   type UptimeWindow,
   type WeightedInterval,
   dayCoverage,
+  dayKeyIn,
+  dayLengthMsIn,
+  dayWindowIn,
   durationDowntimeMs,
   floorPct,
   getHighestPriorityStatus,
@@ -92,13 +94,11 @@ function formatNumber(num: number): string {
 }
 
 // Helper to check if date is today
-function isToday(date: Date): boolean {
-  const today = new Date();
-  return (
-    date.getUTCDate() === today.getUTCDate() &&
-    date.getUTCMonth() === today.getUTCMonth() &&
-    date.getUTCFullYear() === today.getUTCFullYear()
-  );
+// Compares calendar dates IN `tz`: "today" for a Bogota page has to mean the
+// Bogota date, or the last bar prorates against the wrong elapsed window for
+// the five hours either side of UTC midnight.
+function isToday(date: Date, tz: string): boolean {
+  return dayKeyIn(date, tz) === dayKeyIn(new Date(), tz);
 }
 
 // Helper to format duration from minutes
@@ -111,23 +111,24 @@ function formatDuration(minutes: number): string {
 }
 
 // Helper to calculate total minutes in a day (handles today vs past days)
-function getTotalMinutesInDay(date: Date): number {
-  const now = new Date();
-  const startOfDay = new Date(date);
-  startOfDay.setUTCHours(0, 0, 0, 0);
-
-  if (isToday(date)) {
-    const minutesElapsed = Math.floor(
-      (now.getTime() - startOfDay.getTime()) / MILLISECONDS_PER_MINUTE,
-    );
-    return minutesElapsed;
+// A past day is its real length, not a flat 1440 — the two DST days a year are
+// 1380 and 1500 minutes, and using 1440 for them misstates the denominator that
+// every duration percentage on those bars divides by.
+function getTotalMinutesInDay(date: Date, tz: string): number {
+  if (isToday(date, tz)) {
+    const { start } = dayWindowIn(date, tz);
+    return Math.floor((Date.now() - start) / MILLISECONDS_PER_MINUTE);
   }
-  return 24 * 60;
+  return Math.round(dayLengthMsIn(date, tz) / MILLISECONDS_PER_MINUTE);
 }
 
 // Helper to calculate duration in minutes for a specific event type
-function calculateEventDurationMinutes(events: Event[], date: Date): number {
-  const totalDuration = getTotalEventsDurationMs(events, date);
+function calculateEventDurationMinutes(
+  events: Event[],
+  date: Date,
+  tz: string,
+): number {
+  const totalDuration = getTotalEventsDurationMs(events, date, tz);
   return Math.round(totalDuration / MILLISECONDS_PER_MINUTE);
 }
 
@@ -135,28 +136,36 @@ function calculateEventDurationMinutes(events: Event[], date: Date): number {
 function getMaintenanceDurationMinutes(
   maintenances: Event[],
   date: Date,
+  tz: string,
 ): number {
-  return calculateEventDurationMinutes(maintenances, date);
+  return calculateEventDurationMinutes(maintenances, date, tz);
 }
 
 // Helper to get adjusted total minutes accounting for maintenance
 function getAdjustedTotalMinutesInDay(
   date: Date,
   maintenances: Event[],
+  tz: string,
 ): number {
-  const totalMinutes = getTotalMinutesInDay(date);
-  const maintenanceMinutes = getMaintenanceDurationMinutes(maintenances, date);
+  const totalMinutes = getTotalMinutesInDay(date, tz);
+  const maintenanceMinutes = getMaintenanceDurationMinutes(
+    maintenances,
+    date,
+    tz,
+  );
   return Math.max(0, totalMinutes - maintenanceMinutes);
 }
 
-function getTotalEventsDurationMs(events: Event[], date: Date): number {
+function getTotalEventsDurationMs(
+  events: Event[],
+  date: Date,
+  tz: string,
+): number {
   if (events.length === 0) return 0;
 
-  const startOfDay = new Date(date);
-  startOfDay.setUTCHours(0, 0, 0, 0);
-
-  const endOfDay = new Date(date);
-  endOfDay.setUTCHours(23, 59, 59, 999);
+  const { start: dayStart, end: dayEnd } = dayWindowIn(date, tz);
+  const startOfDay = new Date(dayStart);
+  const endOfDay = new Date(dayEnd);
 
   const total = events.reduce((acc, curr) => {
     if (!curr.from) return acc;
@@ -180,8 +189,8 @@ function getTotalEventsDurationMs(events: Event[], date: Date): number {
     return acc + Math.max(0, duration);
   }, 0);
 
-  // Cap at 24 hours per day
-  return Math.min(total, MS_PER_DAY);
+  // Cap at the day's real length — 23h or 25h across a DST transition.
+  return Math.min(total, dayLengthMsIn(date, tz));
 }
 
 export function setDataByType({
@@ -189,11 +198,19 @@ export function setDataByType({
   data,
   cardType,
   barType,
+  timeZone = "UTC",
 }: {
   events: Event[];
   data: StatusData[];
   cardType: "requests" | "duration" | "dominant" | "manual";
   barType: "absolute" | "dominant" | "manual";
+  /**
+   * The status page's display zone. Defaults to "UTC", which is exactly the
+   * behaviour every caller had before this parameter existed — each bar is a
+   * UTC calendar day. Pass the page's configured zone to make the bars line up
+   * with the dates printed under them.
+   */
+  timeZone?: string;
 }): UptimeData[] {
   // Helper functions moved inside to share inputs and avoid parameter passing
   function createEventSegments(
@@ -216,7 +233,7 @@ export function setDataByType({
         const color = impactToStatusType(iv.impact);
         if (color === "success") continue;
         const slice = { ...report, from: iv.from, to: iv.to };
-        if (!isDateWithinEvent(date, slice)) continue;
+        if (!isDateWithinEvent(date, slice, timeZone)) continue;
         (color === "error" ? errorSlices : degradedSlices).push(slice);
       }
     }
@@ -234,34 +251,39 @@ export function setDataByType({
       .filter(({ events }) => events.length > 0)
       .map(({ status, events }) => ({
         status,
-        count: getTotalEventsDurationMs(events, date),
+        count: getTotalEventsDurationMs(events, date, timeZone),
       }));
   }
 
+  // `dayMs` is the day's real length, not a flat MS_PER_DAY: the error duration
+  // being prorated was measured inside that same day, so dividing by 24h on a
+  // 25h day understates the red band (and overstates it on a 23h day).
   function createErrorOnlyBarData(
     errorSegmentCount: number,
+    dayMs: number,
   ): UptimeData["bar"] {
     return [
       {
         status: "success" as const,
-        height: ((MS_PER_DAY - errorSegmentCount) / MS_PER_DAY) * 100,
+        height: ((dayMs - errorSegmentCount) / dayMs) * 100,
       },
       {
         status: "error" as const,
-        height: (errorSegmentCount / MS_PER_DAY) * 100,
+        height: (errorSegmentCount / dayMs) * 100,
       },
     ];
   }
 
   function createProportionalBarData(
     segments: Array<{ status: "info" | "degraded" | "error"; count: number }>,
+    dayMs: number,
   ): UptimeData["bar"] {
     // Downtime keeps its true proportion of the day; maintenance/reports are
     // highlight events that fill the remaining space (no uptime shown).
     const errorMs = segments
       .filter((segment) => segment.status === "error")
       .reduce((sum, segment) => sum + segment.count, 0);
-    const errorHeight = (Math.min(errorMs, MS_PER_DAY) / MS_PER_DAY) * 100;
+    const errorHeight = (Math.min(errorMs, dayMs) / dayMs) * 100;
     const remainingHeight = Math.max(0, 100 - errorHeight);
 
     const highlightSegments = segments.filter(
@@ -376,7 +398,7 @@ export function setDataByType({
 
   // Helper to calculate duration in minutes for a specific event type
   function calculateEventDurationMinutes(events: Event[], date: Date): number {
-    const totalDuration = getTotalEventsDurationMs(events, date);
+    const totalDuration = getTotalEventsDurationMs(events, date, timeZone);
     return Math.round(totalDuration / MILLISECONDS_PER_MINUTE);
   }
 
@@ -400,6 +422,7 @@ export function setDataByType({
       const totalMinutesInDay = getAdjustedTotalMinutesInDay(
         date,
         maintenances,
+        timeZone,
       );
       const successMinutes = Math.max(totalMinutesInDay - totalEventMinutes, 0);
 
@@ -423,9 +446,12 @@ export function setDataByType({
 
   return data.map((dayData) => {
     const date = new Date(dayData.day);
+    const dayMs = dayLengthMsIn(date, timeZone);
 
     // Find events for this day
-    const dayEvents = events.filter((event) => isDateWithinEvent(date, event));
+    const dayEvents = events.filter((event) =>
+      isDateWithinEvent(date, event, timeZone),
+    );
 
     // Determine status override based on events
     const incidents = dayEvents.filter((e) => e.type === "incident");
@@ -438,7 +464,9 @@ export function setDataByType({
     // worst impact color across the day's reports; "success" (operational all
     // day) means reports don't color the day
     const reportsDayStatus = reports.length
-      ? getWorstVariant(reports.map((e) => reportEventDayStatus(e, date)))
+      ? getWorstVariant(
+          reports.map((e) => reportEventDayStatus(e, date, timeZone)),
+        )
       : undefined;
     const activeReportsDayStatus =
       reportsDayStatus === "success" ? undefined : reportsDayStatus;
@@ -471,10 +499,10 @@ export function setDataByType({
             eventSegments.length === 1 &&
             eventSegments[0].status === "error"
           ) {
-            barData = createErrorOnlyBarData(eventSegments[0].count);
+            barData = createErrorOnlyBarData(eventSegments[0].count, dayMs);
           } else {
             // Multiple segments: show proportional distribution
-            barData = createProportionalBarData(eventSegments);
+            barData = createProportionalBarData(eventSegments, dayMs);
           }
         } else if (total === 0) {
           // Empty day - no data available
@@ -562,6 +590,7 @@ export function setDataByType({
                 const totalMinutes = getAdjustedTotalMinutesInDay(
                   date,
                   maintenances,
+                  timeZone,
                 );
                 const statusMinutes = Math.round(
                   (entry.count / total) * totalMinutes,
@@ -599,7 +628,7 @@ export function setDataByType({
         const manualCardStatus =
           activeReportsDayStatus ?? (hasMaintenances ? "info" : undefined);
         const dayImpacts = reports
-          .map((e) => reportEventDayImpact(e, date))
+          .map((e) => reportEventDayImpact(e, date, timeZone))
           .filter((i): i is PageComponentImpact => i !== null);
         const worstDayImpact =
           dayImpacts.length > 0 ? worstImpact(dayImpacts) : null;
@@ -659,7 +688,7 @@ export function setDataByType({
         ...reports.map((e) => ({
           ...e,
           status:
-            reportEventDayStatus(e, date) === "error"
+            reportEventDayStatus(e, date, timeZone) === "error"
               ? ("error" as const)
               : ("degraded" as const),
         })),
@@ -677,23 +706,32 @@ export function getUptime({
   events,
   barType,
   cardType,
+  timeZone = "UTC",
 }: {
   data: StatusData[];
   events: Event[];
   barType: "absolute" | "dominant" | "manual";
   cardType: "requests" | "duration" | "dominant" | "manual";
+  /** Page display zone; "UTC" reproduces the pre-existing behaviour exactly. */
+  timeZone?: string;
 }): string {
   if (barType === "manual" || cardType === "duration") {
     // Clamp event durations to the data lookback window to avoid
     // events outside the window producing negative uptime values.
     const timestamps = data.map((d) => new Date(d.day).getTime());
-    const { segments: coverage, totalMs: total } = dayCoverage(timestamps);
+    const { segments: coverage, totalMs: total } = dayCoverage(
+      timestamps,
+      undefined,
+      timeZone,
+    );
     if (total === 0) return "100%";
-    const windowEndDate = new Date(Math.max(...timestamps));
-    windowEndDate.setUTCHours(23, 59, 59, 999);
+    // End of the LAST bucket's own day. The buckets are day-start instants, so
+    // this has to be derived from the day the last one starts, in the same zone
+    // the coverage segments were measured in — otherwise the window and the
+    // coverage it clips against disagree about where the window ends.
     const window: UptimeWindow = {
       start: Math.min(...timestamps),
-      end: windowEndDate.getTime(),
+      end: dayWindowIn(new Date(Math.max(...timestamps)), timeZone).end,
       now: Date.now(),
     };
 
@@ -705,7 +743,7 @@ export function getUptime({
       // Duration mode: merge both event-based and probe-based downtime
       // to capture both manual incidents/reports AND automated probe failures
       const eventIntervals = downtimeIntervals(events, window, false);
-      const probeIntervals = probeDowntimeIntervals(data, window);
+      const probeIntervals = probeDowntimeIntervals(data, window, timeZone);
       const allIntervals = [...eventIntervals, ...probeIntervals];
       duration = mergedDowntimeMs(
         coverage ? clipToCoverage(allIntervals, coverage) : allIntervals,

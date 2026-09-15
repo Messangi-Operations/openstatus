@@ -5,8 +5,18 @@ import {
 
 import { type WeightedInterval, mergedDowntimeMs } from "./downtime";
 import type { Event, StatusData } from "./events";
+import { dayLengthMsIn } from "./local-day";
 
 export const MS_PER_DAY = 86_400_000;
+
+/**
+ * Length of the calendar day starting at `dayStartMs`, in `tz`. 24h except on
+ * the two DST days a year, where a flat MS_PER_DAY would make consecutive day
+ * segments overlap or leave an hour uncovered.
+ */
+function dayLengthFrom(dayStartMs: number, tz: string): number {
+  return tz === "UTC" ? MS_PER_DAY : dayLengthMsIn(new Date(dayStartMs), tz);
+}
 
 export type CheckCounts = { ok: number; degraded: number; error: number };
 
@@ -24,14 +34,14 @@ export type CoverageSegment = { start: number; end: number };
 export function dayCoverage(
   dayStartsMs: number[],
   clampEndMs?: number,
+  tz = "UTC",
 ): { segments: CoverageSegment[]; totalMs: number } {
   let totalMs = 0;
   const segments: CoverageSegment[] = [];
   for (const start of dayStartsMs) {
+    const dayEnd = start + dayLengthFrom(start, tz);
     const end =
-      clampEndMs === undefined
-        ? start + MS_PER_DAY
-        : Math.min(start + MS_PER_DAY, clampEndMs);
+      clampEndMs === undefined ? dayEnd : Math.min(dayEnd, clampEndMs);
     if (end <= start) continue;
     totalMs += end - start;
     segments.push({ start, end });
@@ -160,12 +170,13 @@ export function reportsOnlyDowntimeMs(
 export function probeDowntimeIntervals(
   data: StatusData[],
   window: UptimeWindow,
+  tz = "UTC",
 ): WeightedInterval[] {
   const intervals: WeightedInterval[] = [];
 
   for (const item of data) {
     const dayStart = new Date(item.day).getTime();
-    const dayEnd = dayStart + MS_PER_DAY;
+    const dayEnd = dayStart + dayLengthFrom(dayStart, tz);
 
     // Clamp to window
     const start = Math.max(dayStart, window.start);
