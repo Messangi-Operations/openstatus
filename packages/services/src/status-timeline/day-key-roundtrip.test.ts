@@ -1,7 +1,12 @@
 import { expect } from "@std/expect";
 import { describe, test } from "@std/testing/bdd";
 
-import { dayKeyIn, startOfDayBeforeIn, startOfDayForKeyIn } from "./local-day";
+import {
+  dayKeyIn,
+  startOfDayBeforeIn,
+  startOfDayForKeyIn,
+  startOfDayIn,
+} from "./local-day";
 
 /**
  * Day buckets are persisted and passed around as date STRINGS — frozen uptime
@@ -50,20 +55,71 @@ describe("startOfDayForKeyIn", () => {
     ).toBe("2026-09-15");
   });
 
-  test("round-trips with dayKeyIn across every zone and a year of dates", () => {
-    // The property that actually matters, checked rather than reasoned about.
+  test("zones that spring forward AT local midnight", () => {
+    // Atlantic/Azores goes -01:00 -> +00:00 at 00:00, so 2025-03-30 spans
+    // [01:00Z, next 00:00Z). An implementation that probes UTC midnight misses
+    // the day entirely and throws — on a date that recurs every March.
+    for (const key of ["2025-03-30", "2026-03-29"]) {
+      const start = startOfDayForKeyIn(key, "Atlantic/Azores");
+      expect(dayKeyIn(start, "Atlantic/Azores")).toBe(key);
+      expect(start.toISOString()).toBe(`${key}T01:00:00.000Z`);
+    }
+  });
+
+  test("zones at offset +12 or more, where UTC noon IS the next local midnight", () => {
+    // Pacific/Norfolk's 2024-10-06 spans exactly [Oct 5 13:00Z, Oct 6 12:00Z),
+    // so a UTC-noon probe lands on the boundary at BOTH ends and misses.
+    for (const key of ["2024-10-06", "2025-10-05", "2026-10-04"]) {
+      expect(
+        dayKeyIn(startOfDayForKeyIn(key, "Pacific/Norfolk"), "Pacific/Norfolk"),
+      ).toBe(key);
+    }
+  });
+
+  test("round-trips across EVERY zone and EVERY day of a year", () => {
+    // Exhaustive, not sampled. A sampled sweep (every 37th day) is exactly what
+    // let the Azores bug through: it never landed on a transition date.
     const zones = Intl.supportedValuesOf("timeZone");
-    const anchor = new Date("2026-09-15T12:00:00Z");
     const broken: string[] = [];
     for (const tz of zones) {
-      for (let n = 0; n < 370; n += 37) {
-        const key = dayKeyIn(startOfDayBeforeIn(anchor, tz, n), tz);
-        if (dayKeyIn(startOfDayForKeyIn(key, tz), tz) !== key) {
-          broken.push(`${tz} ${key}`);
+      const d = new Date(Date.UTC(2026, 0, 1));
+      while (d.getUTCFullYear() === 2026) {
+        const key = d.toISOString().slice(0, 10);
+        try {
+          const start = startOfDayForKeyIn(key, tz);
+          // the defining property: in the day, and 1ms earlier is not
+          if (dayKeyIn(start, tz) !== key)
+            broken.push(`${tz} ${key} wrong-day`);
+          else if (dayKeyIn(new Date(start.getTime() - 1), tz) === key) {
+            broken.push(`${tz} ${key} not-first-instant`);
+          }
+        } catch (e) {
+          broken.push(`${tz} ${key} threw ${(e as Error).message}`);
         }
+        d.setUTCDate(d.getUTCDate() + 1);
       }
     }
     expect(broken).toEqual([]);
+  });
+
+  test("agrees with startOfDayIn reached from inside the day", () => {
+    const zones = [
+      "UTC",
+      "America/Bogota",
+      "Asia/Tokyo",
+      "Atlantic/Azores",
+      "Pacific/Norfolk",
+      "America/Havana",
+      "Australia/Lord_Howe",
+    ];
+    const anchor = new Date("2026-09-15T12:00:00Z");
+    for (const tz of zones) {
+      for (let n = 0; n < 60; n++) {
+        const key = dayKeyIn(startOfDayBeforeIn(anchor, tz, n), tz);
+        const viaKey = startOfDayForKeyIn(key, tz);
+        expect(startOfDayIn(viaKey, tz).getTime()).toBe(viaKey.getTime());
+      }
+    }
   });
 
   test("survives DST transitions in both directions", () => {

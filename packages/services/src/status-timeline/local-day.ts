@@ -229,21 +229,41 @@ export function startOfDayBeforeIn(date: Date, tz: string, n: number): Date {
  * different moment from that date's local midnight everywhere except UTC, and
  * lands in the wrong day outright for zones far enough east.
  *
- * Probes UTC midnight and one day either side rather than doing offset
- * arithmetic: real zones span UTC-12..UTC+14, so the correct instant is always
- * within a day of UTC midnight, and each candidate is confirmed by round-
- * tripping through `dayKeyIn` instead of trusted.
+ * Works by aiming at local NOON and letting `startOfDayIn` walk back from
+ * there, because noon is the point furthest from both edges of a day and so
+ * survives a shift at either edge. Fixed UTC probes do not: probing UTC
+ * midnight breaks where a zone springs forward AT midnight (Atlantic/Azores
+ * 2025-03-30 spans [01:00Z, next 00:00Z), so all three midnight probes miss),
+ * and probing UTC noon breaks at offset +12 or more, where UTC noon IS the next
+ * local midnight — Pacific/Norfolk's 2024-10-06 spans exactly
+ * [Oct 5 13:00Z, Oct 6 12:00Z), so UTC noon lands on the boundary at both ends.
+ * Both classes were found by sweeping every zone against every day rather than
+ * a sample; a sampled sweep is what let the first one through.
+ *
+ * The offset is read twice because the first read can come from the wrong side
+ * of a transition. The result is confirmed by round-tripping through
+ * `dayKeyIn`, with day-either-side fallbacks, so a wrong answer throws instead
+ * of silently returning the neighbouring day.
  */
 export function startOfDayForKeyIn(dayKey: string, tz: string): Date {
-  const base = Date.parse(`${dayKey}T00:00:00.000Z`);
-  if (Number.isNaN(base)) {
+  const utcMidnight = Date.parse(`${dayKey}T00:00:00.000Z`);
+  if (Number.isNaN(utcMidnight)) {
     throw new RangeError(`startOfDayForKeyIn: invalid day key "${dayKey}"`);
   }
-  for (const shiftMs of [0, MS_PER_UTC_DAY, -MS_PER_UTC_DAY]) {
-    const start = startOfDayIn(new Date(base + shiftMs), tz);
+  if (tz === "UTC") return new Date(utcMidnight);
+
+  const noonUtc = utcMidnight + 12 * 60 * 60 * 1000;
+  // aim at local noon: subtract the zone's offset, re-reading it at the
+  // resulting instant in case the first read sat on the other side of a shift
+  const rough = noonUtc - offsetMsAt(new Date(utcMidnight), tz);
+  const localNoon = noonUtc - offsetMsAt(new Date(rough), tz);
+
+  for (const shiftMs of [0, -MS_PER_UTC_DAY, MS_PER_UTC_DAY]) {
+    const candidate = new Date(localNoon + shiftMs);
+    if (dayKeyIn(candidate, tz) !== dayKey) continue;
+    const start = startOfDayIn(candidate, tz);
     if (dayKeyIn(start, tz) === dayKey) return start;
   }
-  // Only reachable if a zone's offset exceeded a day, which no real zone does.
   throw new RangeError(
     `startOfDayForKeyIn: no start found for "${dayKey}" in ${tz}`,
   );
