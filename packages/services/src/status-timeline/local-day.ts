@@ -18,7 +18,6 @@
  * zone.
  */
 
-
 const MS_PER_UTC_DAY = 86_400_000;
 
 /**

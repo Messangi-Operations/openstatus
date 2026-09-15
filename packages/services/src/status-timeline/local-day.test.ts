@@ -157,9 +157,9 @@ describe("repeated local midnight — fall-back AT 00:00 (Havana/Azores class)",
       "2025-11-02T04:00:00.000Z",
     );
     // ...and it is a true boundary: 1ms earlier is Nov 1.
-    expect(dayKeyIn(new Date("2025-11-02T03:59:59.999Z"), "America/Havana")).toBe(
-      "2025-11-01",
-    );
+    expect(
+      dayKeyIn(new Date("2025-11-02T03:59:59.999Z"), "America/Havana"),
+    ).toBe("2025-11-01");
   });
 
   test("an instant inside the repeated hour maps to the same start", () => {
@@ -198,17 +198,28 @@ describe("repeated local midnight — fall-back AT 00:00 (Havana/Azores class)",
   });
 
   test("consecutive Havana days still tile with no gap or overlap", () => {
-    const nov1 = startOfDayIn(new Date("2025-11-01T12:00:00Z"), "America/Havana");
-    const nov2 = startOfDayIn(new Date("2025-11-02T12:00:00Z"), "America/Havana");
-    const nov3 = startOfDayIn(new Date("2025-11-03T12:00:00Z"), "America/Havana");
+    const nov1 = startOfDayIn(
+      new Date("2025-11-01T12:00:00Z"),
+      "America/Havana",
+    );
+    const nov2 = startOfDayIn(
+      new Date("2025-11-02T12:00:00Z"),
+      "America/Havana",
+    );
+    const nov3 = startOfDayIn(
+      new Date("2025-11-03T12:00:00Z"),
+      "America/Havana",
+    );
     expect(nov1.getTime() + 24 * HOUR).toBe(nov2.getTime());
     expect(nov2.getTime() + 25 * HOUR).toBe(nov3.getTime());
   });
 
   test("New_York-style 02:00 fall-back is untouched by the backtrack", () => {
     expect(
-      startOfDayIn(new Date("2026-11-01T12:00:00Z"), "America/New_York")
-        .toISOString(),
+      startOfDayIn(
+        new Date("2026-11-01T12:00:00Z"),
+        "America/New_York",
+      ).toISOString(),
     ).toBe("2026-11-01T04:00:00.000Z");
   });
 });
@@ -232,8 +243,10 @@ describe("invalid Date input", () => {
 describe("zero-offset zones parse the bare 'GMT' longOffset form", () => {
   test("London in winter (GMT, no offset digits) resolves midnight correctly", () => {
     expect(
-      startOfDayIn(new Date("2026-01-15T13:00:00Z"), "Europe/London")
-        .toISOString(),
+      startOfDayIn(
+        new Date("2026-01-15T13:00:00Z"),
+        "Europe/London",
+      ).toISOString(),
     ).toBe("2026-01-15T00:00:00.000Z");
   });
 });
