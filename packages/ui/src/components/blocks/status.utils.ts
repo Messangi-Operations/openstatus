@@ -348,6 +348,7 @@ export const defaultStatusBlocksLabels = {
 
   formatDate: (d: Date) => withUTC(formatDate(d)),
   formatDateShort: (d: Date) => formatDateShort(d),
+  formatDayBucket: (d: Date) => formatDateShort(d),
   formatDateTime: (d: Date) => withUTC(formatDateTime(d)),
   formatDateRange: (from?: Date, to?: Date) => {
     const range = formatDateRange(from, to);

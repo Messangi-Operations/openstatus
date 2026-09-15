@@ -61,7 +61,15 @@ export type StatusBlocksLabels = {
   durationAcross: (s: string) => string;
 
   formatDate: (d: Date) => string;
+  /** Short date of a real timestamp, in the page's display zone. */
   formatDateShort: (d: Date) => string;
+  /**
+   * Short date of a UTC DAY BUCKET (the uptime tracker's "2024-01-15" values,
+   * which are midnight UTC). Deliberately separate from formatDateShort: these
+   * are calendar days computed server-side in UTC, so re-zoning them west
+   * shifts every bar to the previous day.
+   */
+  formatDayBucket: (d: Date) => string;
   formatDateTime: (d: Date) => string;
   formatDateRange: (from?: Date, to?: Date) => string;
   /**

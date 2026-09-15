@@ -613,7 +613,7 @@ export function StatusBarCard({
   return (
     <div data-slot="status-bar-card">
       <div className="p-2 text-xs">
-        {labels.formatDateShort(new Date(item.day))}
+        {labels.formatDayBucket(new Date(item.day))}
       </div>
       {item.card.length > 0 && (
         <>

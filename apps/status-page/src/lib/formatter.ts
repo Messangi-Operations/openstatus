@@ -74,8 +74,9 @@ export function formatNumber(
 
 // TODO: think of supporting custom formats
 
-// All status-page timestamps render in UTC for consistency across viewers; the
-// StatusTimestamp hover card surfaces the viewer's local timezone on demand.
+// Status-page timestamps render in the page's CONFIGURED zone (UTC by default),
+// so every viewer of a given page reads the same clock; the StatusTimestamp
+// hover card surfaces the viewer's own local zone on demand.
 
 export function formatDate(
   date: Date,

@@ -180,3 +180,53 @@ describe("formatDateRangeParts", () => {
     });
   });
 });
+
+describe("display zone", () => {
+  // The page's configured zone, not the viewer's and not UTC.
+  const BOGOTA = "America/Bogota";
+
+  test("renders a timestamp in the configured zone", () => {
+    // 01:00 UTC is still the previous evening in Bogota.
+    expect(
+      formatDateTime(new Date("2024-01-15T01:00:00Z"), "en-US", BOGOTA),
+    ).toBe("January 14 at 8:00 PM");
+  });
+
+  test("a UTC-aligned whole day is NOT a whole day further west", () => {
+    // 00:00:00Z–23:59:59Z is one UTC day, but Sep 13 19:00 – Sep 14 18:59 in
+    // Bogota. Collapsing it to a single date would label the wrong day.
+    const out = formatDateRange(
+      new Date("2026-09-14T00:00:00.000Z"),
+      new Date("2026-09-14T23:59:59.000Z"),
+      "en-US",
+      BOGOTA,
+    );
+    expect(out).toBe("September 13 at 7:00 PM - September 14 at 6:59 PM");
+  });
+
+  test("whole days IN the display zone collapse to date-only", () => {
+    // Midnight Sep 14 through 23:59:59 Sep 16, Bogota time, as UTC instants.
+    // (A single whole day takes the same-day branch and renders as a time
+    // range — pre-existing behaviour, not zone-specific.)
+    expect(
+      formatDateRange(
+        new Date("2026-09-14T05:00:00.000Z"),
+        new Date("2026-09-17T04:59:59.000Z"),
+        "en-US",
+        BOGOTA,
+      ),
+    ).toBe("September 14, 2026 - September 16, 2026");
+  });
+
+  test("handles a half-hour offset zone", () => {
+    expect(
+      formatDateTime(new Date("2024-01-15T00:00:00Z"), "en-US", "Asia/Kolkata"),
+    ).toBe("January 15 at 5:30 AM");
+  });
+
+  test("omitting the zone still means UTC", () => {
+    expect(formatDateTime(new Date("2024-01-15T01:00:00Z"), "en-US")).toBe(
+      "January 15 at 1:00 AM",
+    );
+  });
+});

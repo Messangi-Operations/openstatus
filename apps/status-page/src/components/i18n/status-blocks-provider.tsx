@@ -21,13 +21,13 @@ import {
  *
  * Falls back to the raw zone id if Intl gives nothing useful.
  */
-function zoneLabel(timeZone: string, locale: string) {
+function zoneLabel(timeZone: string, locale: string, at: Date) {
   try {
     const part = new Intl.DateTimeFormat(locale, {
       timeZone,
       timeZoneName: "short",
     })
-      .formatToParts(new Date())
+      .formatToParts(at)
       .find((p) => p.type === "timeZoneName");
     return part?.value ?? timeZone;
   } catch {
@@ -60,11 +60,15 @@ export function StatusBlocksProvider({
 }) {
   const t = useExtracted();
   const locale = useLocale();
-  const withZone = (value: string) =>
-    `${value} (${zoneLabel(timeZone, locale)})`;
 
-  const value = useMemo<StatusBlocksLabels>(
-    () => ({
+  const value = useMemo<StatusBlocksLabels>(() => {
+    // Defined inside the memo so it is not a missing dependency, and takes the
+    // instant being labelled: a zone's short name depends on whether THAT date
+    // was in DST, not on whether today is. A January incident on a Santiago
+    // page must read GMT-3, even when rendered in July.
+    const withZone = (value: string, at: Date) =>
+      `${value} (${zoneLabel(timeZone, locale, at)})`;
+    return {
       systemStatus: {
         success: {
           long: t("All Systems Operational"),
@@ -143,16 +147,20 @@ export function StatusBlocksProvider({
       durationAcross: (duration: string) =>
         t("across {duration}", { duration }),
 
-      formatDate: (d: Date) => withZone(formatDate(d, { locale, timeZone })),
-      // NOT zoned: the uptime tracker feeds this UTC day-bucket strings
-      // ("2024-01-15"), which are midnight UTC. Shifting them into a western
-      // zone moves every bar to the previous day. Day buckets stay UTC.
-      formatDateShort: (d: Date) => formatDate(d, { month: "short", locale }),
+      formatDate: (d: Date) => withZone(formatDate(d, { locale, timeZone }), d),
+      // A real timestamp: render it in the page's zone like every other one.
+      formatDateShort: (d: Date) =>
+        formatDate(d, { month: "short", locale, timeZone }),
+      // A UTC day bucket from the uptime tracker: must NOT be re-zoned, or all
+      // 45 bars shift to the previous day on any western page.
+      formatDayBucket: (d: Date) => formatDate(d, { month: "short", locale }),
       formatDateTime: (d: Date) =>
-        withZone(formatDateTime(d, locale, timeZone)),
+        withZone(formatDateTime(d, locale, timeZone), d),
       formatDateRange: (from?: Date, to?: Date) => {
         const range = formatDateRange(from, to, locale, timeZone);
-        return from || to ? withZone(range) : range;
+        // label the instant the reader ends on; both sides share a zone
+        const at = to ?? from;
+        return at ? withZone(range, at) : range;
       },
       formatDateRangeParts: (from: Date, to: Date) => {
         const { from: start, to: end } = formatDateRangeParts(
@@ -161,11 +169,10 @@ export function StatusBlocksProvider({
           locale,
           timeZone,
         );
-        return { from: start, to: withZone(end) };
+        return { from: start, to: withZone(end, to) };
       },
-    }),
-    [t, locale, timeZone],
-  );
+    };
+  }, [t, locale, timeZone]);
 
   return (
     <StatusBlocksI18nProvider value={value}>
