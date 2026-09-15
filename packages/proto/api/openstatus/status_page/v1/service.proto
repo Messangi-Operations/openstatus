@@ -771,7 +771,12 @@ enum ComponentEventStatus {
 
 // ComponentDayBucket is one day of status data for a component.
 message ComponentDayBucket {
-  // Day in RFC 3339 format (UTC midnight).
+  // Start of the bucket's calendar day, RFC 3339. The day is cut in the
+  // status page's configured display timezone, so this is that zone's local
+  // midnight expressed as an instant — plain UTC midnight only for pages
+  // without a configured zone. The response does not currently carry the
+  // zone itself; consumers needing the calendar DATE should resolve this
+  // instant in the page's zone rather than truncating the string.
   string day = 1;
   // Total checks that day.
   int64 count = 2;

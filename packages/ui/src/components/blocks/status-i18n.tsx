@@ -64,10 +64,19 @@ export type StatusBlocksLabels = {
   /** Short date of a real timestamp, in the page's display zone. */
   formatDateShort: (d: Date) => string;
   /**
-   * Short date of a UTC DAY BUCKET (the uptime tracker's "2024-01-15" values,
-   * which are midnight UTC). Deliberately separate from formatDateShort: these
-   * are calendar days computed server-side in UTC, so re-zoning them west
-   * shifts every bar to the previous day.
+   * Short date of a DAY BUCKET from the uptime tracker.
+   *
+   * A bucket's value is the instant its day BEGINS in the zone the buckets
+   * were computed in — the page's configured zone (UTC when none is set), in
+   * which case the value is plain UTC midnight. Implementations must format
+   * it in that SAME zone: for a zoned page that is the page zone (see
+   * status-blocks-provider), and for the no-provider default that is UTC,
+   * matching its UTC-day data. Formatting in any other zone names the wrong
+   * day — a Tokyo page's "Sep 15" bucket starts at Sep 14 15:00Z, and reading
+   * that instant as UTC labels the bar a full day early.
+   *
+   * Deliberately separate from formatDateShort, which takes a real timestamp:
+   * only one of the two may ever be re-zoned independently of its data.
    */
   formatDayBucket: (d: Date) => string;
   formatDateTime: (d: Date) => string;
