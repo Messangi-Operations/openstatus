@@ -61,10 +61,17 @@ describe("canonicalTimeZone", () => {
     }
   });
 
-  test("every canonical zone round-trips unchanged", () => {
-    // Guarantees a stored canonical value always re-validates on read.
+  test("every canonical zone reaches a stable accepted spelling in one step", () => {
+    // Guarantees a stored value always re-validates on read. The invariant is
+    // a FIXED POINT, not identity: the modern-spelling repair deliberately
+    // maps CLDR-legacy members of the set (Asia/Calcutta) forward to the
+    // current IANA name (Asia/Kolkata) — but whatever comes out must be
+    // accepted and unchanged by a second pass, or a stored row would flap.
     const zones = Intl.supportedValuesOf("timeZone");
-    const broken = zones.filter((z) => canonicalTimeZone(z) !== z);
+    const broken = zones.filter((z) => {
+      const once = canonicalTimeZone(z);
+      return once === null || canonicalTimeZone(once) !== once;
+    });
     expect(broken).toEqual([]);
   });
 });
@@ -90,5 +97,39 @@ describe("pageConfigurationSchema.timezone", () => {
   test("passes a good zone through untouched", () => {
     expect(tz("America/Bogota")).toBe("America/Bogota");
     expect(tz("Asia/Tokyo")).toBe("Asia/Tokyo");
+  });
+});
+
+describe("modern spellings are preserved, not regressed to CLDR-legacy names", () => {
+  // ICU canonicalizes the WRONG WAY for renamed zones: resolvedOptions() maps
+  // Asia/Kolkata → Asia/Calcutta. Without the repair table a user who typed
+  // the current IANA name got the 1993 one stored and displayed back.
+  test("typing the modern name keeps the modern name", () => {
+    expect(canonicalTimeZone("Asia/Kolkata")).toBe("Asia/Kolkata");
+    expect(canonicalTimeZone("Europe/Kyiv")).toBe("Europe/Kyiv");
+    expect(canonicalTimeZone("America/Nuuk")).toBe("America/Nuuk");
+  });
+
+  test("typing the legacy alias is repaired forward to the modern name", () => {
+    expect(canonicalTimeZone("Asia/Calcutta")).toBe("Asia/Kolkata");
+    expect(canonicalTimeZone("Europe/Kiev")).toBe("Europe/Kyiv");
+    expect(canonicalTimeZone("asia/calcutta")).toBe("Asia/Kolkata");
+  });
+
+  test("the repair is idempotent — a stored modern name round-trips", () => {
+    for (const tz of ["Asia/Kolkata", "Europe/Kyiv", "Africa/Asmara"]) {
+      const once = canonicalTimeZone(tz);
+      expect(once).not.toBeNull();
+      expect(canonicalTimeZone(once as string)).toBe(once);
+    }
+  });
+
+  test("UTC handling and rejections are untouched", () => {
+    expect(canonicalTimeZone("Etc/UTC")).toBe("UTC");
+    expect(canonicalTimeZone("+05:00")).toBeNull();
+    // Etc/GMT+5 is real IANA and ClickHouse-valid, but stays rejected on
+    // purpose: no picker offers it, and accepting a second spelling family
+    // for fixed offsets widens the surface for nothing.
+    expect(canonicalTimeZone("Etc/GMT+5")).toBeNull();
   });
 });

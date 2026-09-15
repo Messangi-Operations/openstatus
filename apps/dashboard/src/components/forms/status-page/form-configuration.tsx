@@ -355,6 +355,20 @@ export function FormConfiguration({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
+                        {/* The server canonicalizes to current IANA names
+                            (Asia/Kolkata), while this browser's Intl list may
+                            still use the CLDR-legacy spelling (Asia/Calcutta).
+                            A stored value missing from the list would render
+                            the select blank — surface it as an extra option
+                            instead, so the saved zone is always visible and
+                            re-submittable. */}
+                        {typeof field.value === "string" &&
+                        field.value !== "" &&
+                        !TIME_ZONES.includes(field.value) ? (
+                          <SelectItem key={field.value} value={field.value}>
+                            {field.value}
+                          </SelectItem>
+                        ) : null}
                         {TIME_ZONES.map((tz) => (
                           <SelectItem key={tz} value={tz}>
                             {tz}

@@ -162,6 +162,48 @@ const CANONICAL_ZONES = new Set(Intl.supportedValuesOf("timeZone"));
  * cannot close that without querying ClickHouse; it closes the spelling class,
  * which is the one a human actually hits.
  */
+/**
+ * CLDR-legacy → current IANA spellings, applied AFTER the canonical-set
+ * membership check so every guarantee above still holds.
+ *
+ * Needed because ICU canonicalizes in the WRONG DIRECTION for renamed zones:
+ * on this runtime `resolvedOptions()` maps `Asia/Kolkata` → `Asia/Calcutta`
+ * and `Europe/Kyiv` → `Europe/Kiev`, so a user who typed the modern, correct
+ * name would get the 1993 spelling stored and displayed back. Both spellings
+ * of every pair here are verified to load in ClickHouse 26.8, and each
+ * modern name is validated against THIS runtime's ICU at module init (a
+ * runtime whose ICU predates a rename simply keeps the legacy spelling
+ * rather than storing a name it cannot format with). On a runtime whose ICU
+ * already resolves to the modern names, the map keys never match — a no-op.
+ *
+ * Deliberately only the human-visible city RENAMES. The Argentina hierarchy
+ * (`America/Buenos_Aires` vs `America/Argentina/Buenos_Aires`) is left as
+ * ICU resolves it: both spellings are equally recognizable and equally
+ * valid, so rewriting them buys nothing.
+ */
+const MODERN_SPELLINGS: ReadonlyMap<string, string> = new Map(
+  Object.entries({
+    "Asia/Calcutta": "Asia/Kolkata",
+    "Asia/Katmandu": "Asia/Kathmandu",
+    "Asia/Rangoon": "Asia/Yangon",
+    "Asia/Saigon": "Asia/Ho_Chi_Minh",
+    "Europe/Kiev": "Europe/Kyiv",
+    "Africa/Asmera": "Africa/Asmara",
+    "America/Godthab": "America/Nuuk",
+    "Atlantic/Faeroe": "Atlantic/Faroe",
+    "Pacific/Truk": "Pacific/Chuuk",
+    "Pacific/Ponape": "Pacific/Pohnpei",
+    "Pacific/Enderbury": "Pacific/Kanton",
+  }).filter(([, modern]) => {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: modern });
+      return true;
+    } catch {
+      return false;
+    }
+  }),
+);
+
 export function canonicalTimeZone(tz: string): string | null {
   let resolved: string;
   try {
@@ -172,7 +214,8 @@ export function canonicalTimeZone(tz: string): string | null {
     return null;
   }
   if (resolved === "UTC") return "UTC";
-  return CANONICAL_ZONES.has(resolved) ? resolved : null;
+  if (!CANONICAL_ZONES.has(resolved)) return null;
+  return MODERN_SPELLINGS.get(resolved) ?? resolved;
 }
 
 /** True when `tz` is a zone we accept — see `canonicalTimeZone`. */
