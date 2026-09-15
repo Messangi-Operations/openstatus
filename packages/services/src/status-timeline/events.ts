@@ -14,6 +14,8 @@ import {
   worstImpact,
 } from "@openstatus/db/src/schema";
 
+import { dayKeyIn, startOfDayBeforeIn } from "./local-day";
+
 export type MonitorComponentWithNonNullMonitor =
   PageComponentWithMonitorRelation & {
     type: "monitor";
@@ -46,24 +48,35 @@ export function fillStatusDataFor45Days(
   data: Array<StatusData>,
   monitorId: string,
   lookbackPeriod = 45,
+  /**
+   * Zone whose calendar days the grid is built from. Defaults to UTC, which
+   * reproduces the previous behaviour exactly.
+   *
+   * The old code keyed buckets with `toISOString().split("T")[0]` — the UTC
+   * date of the bucket's start instant. That is only the bucket's own calendar
+   * date while the zone IS UTC: for a zone ahead of UTC, local midnight falls
+   * on the PREVIOUS UTC day (Tokyo's Sep 15 starts at Sep 14 15:00Z), so the
+   * key would silently name the wrong day and real data would land in a
+   * different bucket than the grid generated for it.
+   */
+  tz = "UTC",
 ): Array<StatusData> {
   const result = [];
   const dataByDay = new Map();
 
-  // Index existing data by day
+  // Index existing data by its calendar day IN THE TARGET ZONE.
   data.forEach((item) => {
-    const dayKey = new Date(item.day).toISOString().split("T")[0]; // YYYY-MM-DD format
+    const dayKey = dayKeyIn(new Date(item.day), tz);
     dataByDay.set(dayKey, item);
   });
 
-  // Generate all days from today backwards
+  // Generate all days from today backwards, stepping by calendar day rather
+  // than by a fixed 24h — DST days are 23 or 25 hours and would drift.
   const now = new Date();
   for (let i = 0; i < lookbackPeriod; i++) {
-    const date = new Date(now);
-    date.setUTCDate(date.getUTCDate() - i);
-    date.setUTCHours(0, 0, 0, 0); // Set to start of day in UTC
+    const date = startOfDayBeforeIn(now, tz, i);
 
-    const dayKey = date.toISOString().split("T")[0]; // YYYY-MM-DD format
+    const dayKey = dayKeyIn(date, tz);
     const isoString = date.toISOString();
 
     if (dataByDay.has(dayKey)) {
