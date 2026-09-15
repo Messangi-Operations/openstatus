@@ -34,7 +34,14 @@ SELECT
 FROM icmp_response__v0
 WHERE
     monitorId IN {{ Array(monitorIds, 'String', '4433') }}
-    AND cronTimestamp >= {{ Int64(since, 0) }}
+    -- The raw datasource has NO TTL, so an omitted `since` must not mean "walk
+    -- all of history": the greatest() clamps the scan to a 46-day horizon (45
+    -- grid days + 1 day of zone-offset margin) even if a future caller forgets
+    -- to pass one. Callers today always pass the start of the oldest grid day.
+    AND cronTimestamp >= greatest(
+        {{ Int64(since, 0) }},
+        toUnixTimestamp64Milli(now64(3)) - 3974400000
+    )
 GROUP BY day, monitorId
 ORDER BY day DESC
 
