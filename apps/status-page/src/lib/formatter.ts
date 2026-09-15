@@ -88,8 +88,9 @@ export function formatDate(
     month: "long",
     day: "numeric",
     // UTC is the DEFAULT, not a lock: the status-blocks provider passes the
-    // page's configured zone through `options`. Anything that must stay in UTC
-    // (the uptime tracker's day buckets) simply omits it.
+    // page's configured zone through `options`. It applies to the uptime
+    // tracker's day buckets too — a bucket's value is the instant its day
+    // BEGINS in the page's zone, so naming that day means formatting it there.
     timeZone: "UTC",
     ...rest,
   });

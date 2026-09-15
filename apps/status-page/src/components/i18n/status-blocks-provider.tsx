@@ -151,9 +151,22 @@ export function StatusBlocksProvider({
       // A real timestamp: render it in the page's zone like every other one.
       formatDateShort: (d: Date) =>
         formatDate(d, { month: "short", locale, timeZone }),
-      // A UTC day bucket from the uptime tracker: must NOT be re-zoned, or all
-      // 45 bars shift to the previous day on any western page.
-      formatDayBucket: (d: Date) => formatDate(d, { month: "short", locale }),
+      /**
+       * A day bucket from the uptime tracker.
+       *
+       * The value is the INSTANT the bucket's day begins in the page's zone —
+       * 2026-09-14T05:00:00Z for a Bogota page's Sep 14, 2026-09-14T15:00:00Z
+       * for a Tokyo page's Sep 15. Rendering that instant in the page's zone is
+       * therefore the only formatting that names the right day, in both
+       * directions from Greenwich. It reduces to the old behaviour on a UTC
+       * page, where the bucket start is UTC midnight.
+       *
+       * Kept distinct from `formatDateShort` despite currently formatting the
+       * same way: that one takes a real timestamp, this one takes a bucket
+       * boundary, and only one of them may ever carry a zone suffix.
+       */
+      formatDayBucket: (d: Date) =>
+        formatDate(d, { month: "short", locale, timeZone }),
       formatDateTime: (d: Date) =>
         withZone(formatDateTime(d, locale, timeZone), d),
       formatDateRange: (from?: Date, to?: Date) => {
