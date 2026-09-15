@@ -3814,7 +3814,7 @@
           "day": {
             "type": "string",
             "title": "day",
-            "description": "Day in RFC 3339 format (UTC midnight)."
+            "description": "Start of the bucket's calendar day, RFC 3339. The day is cut in the status page's configured display timezone, so this is that zone's local midnight expressed as an instant - plain UTC midnight only for pages without a configured zone. The response does not carry the zone itself; resolve this instant in the page's zone rather than truncating the string."
           },
           "count": {
             "type": ["integer", "string"],

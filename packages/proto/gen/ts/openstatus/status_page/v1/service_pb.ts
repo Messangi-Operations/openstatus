@@ -1589,7 +1589,12 @@ export const GetPageComponentDailySummaryRequestSchema: GenMessage<GetPageCompon
  */
 export type ComponentDayBucket = Message<"openstatus.status_page.v1.ComponentDayBucket"> & {
   /**
-   * Day in RFC 3339 format (UTC midnight).
+   * Start of the bucket's calendar day, RFC 3339. The day is cut in the
+   * status page's configured display timezone, so this is that zone's local
+   * midnight expressed as an instant - plain UTC midnight only for pages
+   * without a configured zone. The response does not currently carry the
+   * zone itself; consumers needing the calendar DATE should resolve this
+   * instant in the page's zone rather than truncating the string.
    *
    * @generated from field: string day = 1;
    */

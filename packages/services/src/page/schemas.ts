@@ -1,6 +1,7 @@
 import { insertPageSchema } from "@openstatus/db/src/schema";
 import { pageAccessTypes } from "@openstatus/db/src/schema/pages/constants";
 import {
+  canonicalTimeZone,
   customDomainSchema,
   customThemeWriteSchema,
   isValidTimeZone,
@@ -195,13 +196,16 @@ export const UpdatePageConfigurationInput = z.object({
        * On the WRITE path an unknown zone must be rejected so the form can say
        * so — which is the whole reason the read path is allowed to be lenient.
        */
-      timezone: z
-        .undefined()
-        .or(
-          z
-            .string()
-            .refine(isValidTimeZone, { message: "Unknown IANA time zone" }),
-        ),
+      timezone: z.undefined().or(
+        z
+          .string()
+          .refine(isValidTimeZone, { message: "Unknown IANA time zone" })
+          // Store the CANONICAL spelling, not what the client sent. The value
+          // is interpolated into ClickHouse's `toTimeZone(...)` on every read,
+          // and ICU accepts spellings ClickHouse rejects; normalising once here
+          // means the column can never hold one of them.
+          .transform((v) => canonicalTimeZone(v) ?? "UTC"),
+      ),
     })
     .nullish(),
 });

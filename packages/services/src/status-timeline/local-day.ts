@@ -28,9 +28,15 @@ const MS_PER_UTC_DAY = 86_400_000;
  * the bar maths calls into this module per (day x event) pair — measured at
  * ~250us per dayWindowIn against ~0.1us for the arithmetic it replaced, which
  * multiplied out to hundreds of added milliseconds per status-page render.
- * The formatters are immutable, and the key space is bounded: `tz` only ever
- * holds an IANA name that survived pageConfigurationSchema's isValidTimeZone
- * refine (418 zones), so the maps cannot grow without limit.
+ * The formatters are immutable, and the key space is bounded — but only because
+ * of what `isValidTimeZone` now does, which is worth stating precisely because
+ * the obvious reading is wrong. It is NOT enough that a zone merely construct a
+ * DateTimeFormat: `america/bogota`, `AMERICA/BOGOTA` and thousands of other
+ * case-spellings all construct fine and are all distinct Map keys (measured:
+ * 20,000 spellings of one zone, +5 MiB). What bounds this is that the schema
+ * canonicalizes before storing, so `tz` arrives as one of ~418 canonical names
+ * or the literal "UTC". If that canonicalization is ever weakened, this cache
+ * becomes unbounded — they are load-bearing for each other.
  *
  * An invalid zone still throws RangeError at construction, exactly as the
  * uncached per-call construction did — the cache is only populated on success.

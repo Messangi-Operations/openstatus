@@ -122,18 +122,62 @@ export const insertPageSchema = createInsertSchema(page, {
 // expect a strict enum (e.g. the status-page layout falling back to "absolute"
 // barType and rendering manual-mode bars as empty).
 /**
- * True when the runtime accepts `tz` as an IANA zone. `Intl.DateTimeFormat`
- * throws RangeError on an unknown zone, so this is the only reliable check —
- * there is no exhaustive list to compare against, and the supported set differs
- * between runtimes.
+ * The set of zone names this runtime's ICU considers canonical. Deliberately
+ * computed once: it is stable for the life of the process and the list is ~418
+ * entries.
+ *
+ * NOTE `Intl.supportedValuesOf("timeZone")` does NOT contain "UTC" — verified,
+ * not assumed. Treating membership in this set as the whole rule would reject
+ * the default zone every page uses. "UTC" is therefore accepted explicitly
+ * below; do not "simplify" that away.
  */
-export function isValidTimeZone(tz: string): boolean {
+const CANONICAL_ZONES = new Set(Intl.supportedValuesOf("timeZone"));
+
+/**
+ * The canonical IANA name for `tz`, or null if it is not a zone we will accept.
+ *
+ * Canonicalizing is not cosmetic — it is the whole point. `Intl.DateTimeFormat`
+ * accepts spellings that ClickHouse rejects outright, and the two systems sit on
+ * opposite sides of this value: the zone is validated here in JS and then
+ * interpolated into `toTimeZone(...)` in the Tinybird pipes. `america/bogota`,
+ * `AMERICA/BOGOTA`, `utc` and `+05:00` all construct a working `DateTimeFormat`
+ * and all fail ClickHouse with "Cannot load time zone". The status page then
+ * degrades to manual mode with 45 empty bars and no visible error, and the gRPC
+ * path — which has no such fallback — errors outright.
+ *
+ * So acceptance means: ICU can resolve it AND the resolved name is one ICU
+ * itself calls canonical (or "UTC"). That maps `america/bogota` to
+ * `America/Bogota` and `US/Eastern` to `America/New_York`, preserving intent,
+ * while rejecting the offset forms (`+05:00`, `+0530`) and oddities like
+ * `Factory` that no dropdown offers and ClickHouse would choke on.
+ *
+ * Mapping every UTC alias (`Etc/UTC`, `GMT`, `Zulu`, `Universal`) onto the
+ * literal "UTC" also keeps them on the cheap path: the read layer short-circuits
+ * on `tz === "UTC"` by string equality, so an un-canonicalized `Etc/UTC` would
+ * have taken the expensive per-request raw scan for byte-identical output.
+ *
+ * Residual gap, accepted knowingly: ICU's canonical list and ClickHouse's
+ * `system.time_zones` version independently, so a very new zone (e.g.
+ * `America/Coyhaique`) can be canonical here and unknown there. This check
+ * cannot close that without querying ClickHouse; it closes the spelling class,
+ * which is the one a human actually hits.
+ */
+export function canonicalTimeZone(tz: string): string | null {
+  let resolved: string;
   try {
-    new Intl.DateTimeFormat("en-US", { timeZone: tz });
-    return true;
+    resolved = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+    }).resolvedOptions().timeZone;
   } catch {
-    return false;
+    return null;
   }
+  if (resolved === "UTC") return "UTC";
+  return CANONICAL_ZONES.has(resolved) ? resolved : null;
+}
+
+/** True when `tz` is a zone we accept — see `canonicalTimeZone`. */
+export function isValidTimeZone(tz: string): boolean {
+  return canonicalTimeZone(tz) !== null;
 }
 
 export const pageConfigurationSchema = z.object({
@@ -167,9 +211,14 @@ export const pageConfigurationSchema = z.object({
    * markets, an email is rendered once server-side and cannot adapt to its
    * reader, and a fixed zone renders identically during SSR and hydration.
    *
-   * `.refine` rejects an unknown zone so a future settings form can surface the
+   * `.refine` rejects an unknown zone so the settings form can surface the
    * error, but `.catch("UTC")` makes a bad value already in the column DEGRADE
    * rather than fail the parse — same shape as `customTheme` below.
+   *
+   * The transform canonicalizes rather than passing the stored string through.
+   * Rows written before that rule existed may hold a spelling ICU accepts and
+   * ClickHouse does not; canonicalizing on READ repairs those in place instead
+   * of leaving them to empty the page.
    *
    * That `.catch` is load-bearing, not defensive dressing. `pageConfigurationSchema`
    * is parsed on the READ path, and a parse failure there is not a validation
@@ -184,7 +233,7 @@ export const pageConfigurationSchema = z.object({
     .string()
     .refine(isValidTimeZone, { message: "Unknown IANA time zone" })
     .nullish()
-    .transform((v) => v ?? "UTC")
+    .transform((v) => (v == null ? "UTC" : (canonicalTimeZone(v) ?? "UTC")))
     .catch("UTC"),
 });
 export type PageConfiguration = z.infer<typeof pageConfigurationSchema>;

@@ -13,9 +13,16 @@ export const MS_PER_DAY = 86_400_000;
  * Length of the calendar day starting at `dayStartMs`, in `tz`. 24h except on
  * the two DST days a year, where a flat MS_PER_DAY would make consecutive day
  * segments overlap or leave an hour uncovered.
+ *
+ * Goes through `dayLengthMsIn` in BOTH branches rather than short-circuiting to
+ * MS_PER_DAY here. `dayLengthMsIn` has its own UTC fast path, so this costs
+ * nothing — and routing around it also routed around its invalid-Date guard,
+ * which made the two branches disagree about corrupt input: `tz: "UTC"` handed
+ * back NaN that propagated into a NaN uptime percentage, while the same bucket
+ * in any other zone threw. Identical inputs must fail identically.
  */
 function dayLengthFrom(dayStartMs: number, tz: string): number {
-  return tz === "UTC" ? MS_PER_DAY : dayLengthMsIn(new Date(dayStartMs), tz);
+  return dayLengthMsIn(new Date(dayStartMs), tz);
 }
 
 export type CheckCounts = { ok: number; degraded: number; error: number };
