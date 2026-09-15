@@ -13,6 +13,12 @@ const PER_PAGE_MAX = 200;
 function formatMaintenanceDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
+  // Explicit UTC, suffix visible. Without a timeZone this rendered in the
+  // SERVER's zone — the same approval summary read differently depending on
+  // where the process ran. It cannot use the page's display zone: this runs
+  // inside a pure `summarize` callback with no service context to load the
+  // page configuration from. UTC is at least stable, self-describing ("UTC"
+  // is printed), and matches the ISO input the operator supplied.
   return d.toLocaleString("en-US", {
     weekday: "short",
     year: "numeric",
@@ -21,6 +27,7 @@ function formatMaintenanceDate(iso: string): string {
     hour: "numeric",
     minute: "2-digit",
     timeZoneName: "short",
+    timeZone: "UTC",
   });
 }
 

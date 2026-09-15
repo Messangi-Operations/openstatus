@@ -25,7 +25,6 @@ import {
   verifySelfSignupSubscriber,
 } from "@openstatus/services/page-subscriber";
 import { TRPCError } from "@trpc/server";
-import { endOfDay, startOfDay, subDays } from "date-fns";
 import { z } from "zod";
 
 import { createTRPCRouter, publicProcedure } from "../trpc";
@@ -34,6 +33,7 @@ import {
   activeReportStatus,
   fillStatusDataFor45Days,
   fillStatusDataFor45DaysNoop,
+  dayWindowIn,
   startOfDayBeforeIn,
   getEvents,
   getUptime,
@@ -1261,8 +1261,23 @@ export const statusPageRouter = createTRPCRouter({
         proceduresByType[_monitor.jobType as keyof typeof proceduresByType] ??
         null;
 
-      const fromDate = startOfDay(subDays(new Date(), 7)).toISOString();
-      const toDate = endOfDay(new Date()).toISOString();
+      // The 7-day chart window is cut at the PAGE zone's midnights — never
+      // date-fns startOfDay/endOfDay, which use whatever zone the server
+      // process happens to run in (a host-zone bug even for UTC pages: the
+      // window shifted with the deployment region).
+      const monitorConfiguration = pageConfigurationSchema.safeParse(
+        _page.configuration ?? {},
+      );
+      const monitorTz = monitorConfiguration.success
+        ? monitorConfiguration.data.timezone
+        : "UTC";
+      const fromDate = startOfDayBeforeIn(
+        new Date(),
+        monitorTz,
+        7,
+      ).toISOString();
+      const toDate = new Date(dayWindowIn(new Date(), monitorTz).end)
+        .toISOString();
 
       // Slow/erroring Tinybird → empty chart data so the page still renders.
       const metrics = !procedures
