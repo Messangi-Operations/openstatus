@@ -8,12 +8,15 @@ import { defaultTb, getReadDb, type ServiceContext } from "../context";
 import { ForbiddenError, NotFoundError } from "../errors";
 import {
   dayCoverage,
+  dayKeyIn,
   durationDowntimeMs,
   type Event,
   floorPct,
   getEvents,
   reportsOnlyDowntimeMs,
   requestsTally,
+  startOfDayBeforeIn,
+  startOfDayForKeyIn,
 } from "../status-timeline";
 import { type ComputeCountRow, monthRange } from "./compute";
 import {
@@ -94,6 +97,7 @@ function durationMonth(
   days: DayCount[] | null,
   events: Event[],
   nowMs: number,
+  tz: string,
 ): MonthValue {
   // denominator = days with checks, matching getUptime's data.length; frozen
   // months are zero-filled so counting all days would inflate sparse months
@@ -104,8 +108,14 @@ function durationMonth(
   // downtime is clipped to the checked days (a paused stretch can't exceed
   // the denominator) and the in-progress day is clamped to elapsed time so
   // 2h down on the 2nd isn't diluted by the rest of today
-  const dayStarts = withChecks.map((d) => Date.parse(`${d.day}T00:00:00.000Z`));
-  const { segments, totalMs } = dayCoverage(dayStarts, nowMs);
+  // A day KEY is a calendar date; the instant it begins depends on the zone.
+  // `${d.day}T00:00:00.000Z` is that date's UTC midnight, which is a different
+  // moment from local midnight anywhere but UTC — so the coverage segments
+  // would be offset from the days they are meant to cover.
+  const dayStarts = withChecks.map((d) =>
+    startOfDayForKeyIn(d.day, tz).getTime(),
+  );
+  const { segments, totalMs } = dayCoverage(dayStarts, nowMs, tz);
   if (segments.length === 0 || totalMs <= 0) return null;
   const window = {
     start: segments[0].start,
@@ -192,6 +202,10 @@ export async function getUptimeHistory(args: {
     _page.configuration ?? {},
   );
   const mode = configuration.success ? configuration.data.value : "requests";
+  // The page's display zone. History has to agree with the uptime bars about
+  // which day an outage fell on — two surfaces describing the same page must
+  // not cut days differently.
+  const timeZone = configuration.success ? configuration.data.timezone : "UTC";
 
   const months = monthKeys(now);
   const currentKey = months[months.length - 1];
@@ -241,16 +255,35 @@ export async function getUptimeHistory(args: {
       ids.add(String(c.monitorId));
       monitorIdsByJobType.set(c.monitor.jobType, ids);
     }
-    const pipes = args.pipes ?? {
-      http: defaultTb.httpStatus45d,
-      tcp: defaultTb.tcpStatus45d,
-      dns: defaultTb.dnsStatus45d,
-      icmp: defaultTb.icmpStatus45d,
-      grpc: defaultTb.grpcStatus45d,
-    };
+    // Unfrozen months are read live, so they CAN be cut in the page's zone.
+    // Frozen months cannot — see the note on `frozenByKey` below.
+    const zoned = timeZone !== "UTC";
+    const pipes =
+      args.pipes ??
+      (zoned
+        ? {
+            http: defaultTb.httpStatus45dTz,
+            tcp: defaultTb.tcpStatus45dTz,
+            dns: defaultTb.dnsStatus45dTz,
+            icmp: defaultTb.icmpStatus45dTz,
+            grpc: defaultTb.grpcStatus45dTz,
+          }
+        : {
+            http: defaultTb.httpStatus45d,
+            tcp: defaultTb.tcpStatus45d,
+            dns: defaultTb.dnsStatus45d,
+            icmp: defaultTb.icmpStatus45d,
+            grpc: defaultTb.grpcStatus45d,
+          });
     return fetchFreezeCounts({
       monitorIdsByJobType,
       pipes,
+      tz: zoned ? timeZone : undefined,
+      // The pipes look back a fixed window anyway; this bounds the raw scan to
+      // the same horizon the freeze job uses.
+      since: zoned
+        ? startOfDayBeforeIn(new Date(nowMs), timeZone, 45).getTime()
+        : undefined,
       throttleMs: 0,
       sleep: args.sleep,
     });
@@ -264,7 +297,10 @@ export async function getUptimeHistory(args: {
 
   const liveByMonitorMonth = new Map<string, Map<string, DayCount>>();
   for (const row of liveCounts) {
-    const day = row.day.slice(0, 10);
+    // NOT `row.day.slice(0, 10)`. With the zoned pipes `row.day` is the instant
+    // the local day BEGINS, so its UTC date is the previous calendar date for
+    // any zone east of Greenwich — every bucket would file one day early.
+    const day = dayKeyIn(new Date(row.day), timeZone);
     const key = day.slice(0, 7);
     if (key !== currentKey && key !== previousKey) continue;
     const mapKey = `${row.monitorId}:${key}`;
@@ -311,7 +347,7 @@ export async function getUptimeHistory(args: {
         if (mode === "requests") {
           value = requestsMonth(days);
         } else if (mode === "duration") {
-          value = durationMonth(days, events, nowMs);
+          value = durationMonth(days, events, nowMs, timeZone);
         } else {
           // manual mode still keys "did the monitor run" off counts: a
           // zero-check month has no meaningful uptime in any mode

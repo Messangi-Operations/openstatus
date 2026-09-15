@@ -2,6 +2,7 @@ import { and, db, eq, isNotNull, isNull } from "@openstatus/db";
 import {
   maintenance,
   page,
+  pageConfigurationSchema,
   pageSubscriber,
   statusReportUpdate,
 } from "@openstatus/db/src/schema";
@@ -172,9 +173,13 @@ export async function dispatchPageUpdate(pageUpdate: PageUpdate) {
       pageName: pageData.name,
       pageSlug: pageData.slug,
       customDomain: pageData.customDomain,
+      // Parsed, not cast. The raw column can hold a spelling written before
+      // canonicalization existed; the schema repairs it (and degrades anything
+      // unusable to UTC), so the email agrees with the status page instead of
+      // rendering in a zone the page itself refuses to use.
       pageTimeZone:
-        (pageData.configuration as { timezone?: string } | null)?.timezone ??
-        "UTC",
+        pageConfigurationSchema.safeParse(pageData.configuration ?? {}).data
+          ?.timezone ?? "UTC",
       channelType: sub.channelType as "email" | "webhook" | "slack",
       email: sub.email ?? undefined,
       webhookUrl: sub.webhookUrl ?? undefined,

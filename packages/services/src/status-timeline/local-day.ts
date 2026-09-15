@@ -219,6 +219,36 @@ export function startOfDayBeforeIn(date: Date, tz: string, n: number): Date {
   return startOfDayIn(start, tz);
 }
 
+/**
+ * The instant at which the calendar day named `dayKey` ("YYYY-MM-DD") begins
+ * in `tz`.
+ *
+ * The inverse of `dayKeyIn`. Needed because day buckets are persisted and
+ * passed around as date STRINGS, and turning one back into an instant with
+ * `Date.parse(`${dayKey}T00:00:00Z`)` yields UTC midnight — which is a
+ * different moment from that date's local midnight everywhere except UTC, and
+ * lands in the wrong day outright for zones far enough east.
+ *
+ * Probes UTC midnight and one day either side rather than doing offset
+ * arithmetic: real zones span UTC-12..UTC+14, so the correct instant is always
+ * within a day of UTC midnight, and each candidate is confirmed by round-
+ * tripping through `dayKeyIn` instead of trusted.
+ */
+export function startOfDayForKeyIn(dayKey: string, tz: string): Date {
+  const base = Date.parse(`${dayKey}T00:00:00.000Z`);
+  if (Number.isNaN(base)) {
+    throw new RangeError(`startOfDayForKeyIn: invalid day key "${dayKey}"`);
+  }
+  for (const shiftMs of [0, MS_PER_UTC_DAY, -MS_PER_UTC_DAY]) {
+    const start = startOfDayIn(new Date(base + shiftMs), tz);
+    if (dayKeyIn(start, tz) === dayKey) return start;
+  }
+  // Only reachable if a zone's offset exceeded a day, which no real zone does.
+  throw new RangeError(
+    `startOfDayForKeyIn: no start found for "${dayKey}" in ${tz}`,
+  );
+}
+
 /** Length of `date`'s calendar day in `tz`, in ms. 23h / 25h on DST days. */
 export function dayLengthMsIn(date: Date, tz: string): number {
   assertValidDate(date, "dayLengthMsIn");

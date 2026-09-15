@@ -1,6 +1,7 @@
 import { createRoute } from "@hono/zod-openapi";
 import { and, db, eq, isNotNull } from "@openstatus/db";
 import {
+  pageConfigurationSchema,
   pageSubscriber,
   statusReport,
   statusReportUpdate,
@@ -129,12 +130,13 @@ export function registerStatusReportUpdateRoutes(api: typeof statusReportsApi) {
           pageTitle: _statusReportWithRelations.page.title,
           pageSlug: _statusReportWithRelations.page.slug,
           customDomain: _statusReportWithRelations.page.customDomain,
+          // Parsed, not cast — same reason as the dispatcher: the raw column
+          // may hold a pre-canonicalization spelling, and an email must not
+          // render in a zone the status page itself would reject.
           timeZone:
-            (
-              _statusReportWithRelations.page.configuration as {
-                timezone?: string;
-              } | null
-            )?.timezone ?? "UTC",
+            pageConfigurationSchema.safeParse(
+              _statusReportWithRelations.page.configuration ?? {},
+            ).data?.timezone ?? "UTC",
           reportTitle: _statusReportWithRelations.title,
           status: _statusReportUpdate.status,
           message: _statusReportUpdate.message,

@@ -17,6 +17,9 @@ import { freezeMonitorMonth } from "./freeze";
 
 export type StatusPipeFn = (params: {
   monitorIds: string[];
+  /** Only the `*_tz` pipes read these; the UTC pipes ignore them. */
+  tz?: string;
+  since?: number;
 }) => Promise<{ data: ComputeCountRow[] }>;
 
 // only these job types have a 45d status pipe; others (udp/ssl) have no
@@ -74,6 +77,14 @@ export async function fetchFreezeCounts(args: {
   monitorIdsByJobType: Map<string, Set<string>>;
   pipes: UptimeFreezePipes;
   chunkSize?: number;
+  /**
+   * Zone to group days in, when `pipes` are the zoned variants. Forwarded
+   * verbatim; picking the pipe family is the caller's job, because only the
+   * caller knows whose zone it is.
+   */
+  tz?: string;
+  /** Lower bound for the zoned raw read; ignored by the UTC pipes. */
+  since?: number;
   attempts?: number;
   throttleMs?: number;
   sleep?: (ms: number) => Promise<void>;
@@ -100,7 +111,11 @@ export async function fetchFreezeCounts(args: {
       for (let attempt = 0; attempt < attempts && !done; attempt++) {
         try {
           if (attempt > 0) await sleep(1000 * 2 ** (attempt - 1));
-          const res = await pipe({ monitorIds });
+          const res = await pipe({
+            monitorIds,
+            tz: args.tz,
+            since: args.since,
+          });
           counts.push(...res.data);
           done = true;
         } catch (e) {
