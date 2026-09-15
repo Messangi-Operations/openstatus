@@ -19,6 +19,49 @@
  */
 
 
+const MS_PER_UTC_DAY = 86_400_000;
+
+/**
+ * Per-zone Intl.DateTimeFormat caches.
+ *
+ * Constructing an Intl.DateTimeFormat is ~2 orders of magnitude more expensive
+ * than using one (locale + tz data resolution happens at construction), and
+ * the bar maths calls into this module per (day x event) pair — measured at
+ * ~250us per dayWindowIn against ~0.1us for the arithmetic it replaced, which
+ * multiplied out to hundreds of added milliseconds per status-page render.
+ * The formatters are immutable, and the key space is bounded: `tz` only ever
+ * holds an IANA name that survived pageConfigurationSchema's isValidTimeZone
+ * refine (418 zones), so the maps cannot grow without limit.
+ *
+ * An invalid zone still throws RangeError at construction, exactly as the
+ * uncached per-call construction did — the cache is only populated on success.
+ */
+const offsetFormatters = new Map<string, Intl.DateTimeFormat>();
+const dayKeyFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function offsetFormatterFor(tz: string): Intl.DateTimeFormat {
+  let f = offsetFormatters.get(tz);
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      timeZoneName: "longOffset",
+    });
+    offsetFormatters.set(tz, f);
+  }
+  return f;
+}
+
+function dayKeyFormatterFor(tz: string): Intl.DateTimeFormat {
+  let f = dayKeyFormatters.get(tz);
+  if (!f) {
+    // Bare options: exactly what `toLocaleDateString("en-CA", { timeZone })`
+    // constructs internally, so `.format()` output is unchanged.
+    f = new Intl.DateTimeFormat("en-CA", { timeZone: tz });
+    dayKeyFormatters.set(tz, f);
+  }
+  return f;
+}
+
 /**
  * Every function here rejects an invalid Date up front, loudly.
  *
@@ -42,7 +85,10 @@ function assertValidDate(date: Date, caller: string): void {
 /** Calendar date in `tz` as `YYYY-MM-DD`. "en-CA" is the locale that yields it. */
 export function dayKeyIn(date: Date, tz: string): string {
   assertValidDate(date, "dayKeyIn");
-  return date.toLocaleDateString("en-CA", { timeZone: tz });
+  // toISOString().slice(0, 10) IS the en-CA UTC calendar date for any date a
+  // bucket can hold, without an Intl lookup on the hot default path.
+  if (tz === "UTC") return date.toISOString().slice(0, 10);
+  return dayKeyFormatterFor(tz).format(date);
 }
 
 /**
@@ -54,10 +100,7 @@ function offsetMsAt(date: Date, tz: string): number {
   // That older trick re-parses a local time, and on a fall-back day the same
   // wall-clock hour occurs twice — the parser silently picks one, so the offset
   // comes back an hour wrong for exactly the instants this code must get right.
-  const name = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    timeZoneName: "longOffset",
-  })
+  const name = offsetFormatterFor(tz)
     .formatToParts(date)
     .find((p) => p.type === "timeZoneName")?.value;
 
@@ -90,6 +133,14 @@ function offsetMsAt(date: Date, tz: string): number {
  */
 export function startOfDayIn(date: Date, tz: string): Date {
   assertValidDate(date, "startOfDayIn");
+  // The default path stays pure arithmetic: a UTC day starts at setUTCHours(0)
+  // and no offset can ever change that. Byte-identical to the pre-timezone
+  // behaviour, minus every Intl call.
+  if (tz === "UTC") {
+    const start = new Date(date);
+    start.setUTCHours(0, 0, 0, 0);
+    return start;
+  }
   const key = dayKeyIn(date, tz);
   const off = offsetMsAt(date, tz);
   const wall = new Date(date.getTime() + off);
@@ -143,6 +194,12 @@ export function startOfDayBeforeIn(date: Date, tz: string, n: number): Date {
   // none has it scheduled; detecting it here would complicate every call for a
   // case that cannot currently occur. If a country announces one again, this
   // is the function to revisit.
+  if (tz === "UTC") {
+    const start = new Date(date);
+    start.setUTCHours(0, 0, 0, 0);
+    start.setUTCDate(start.getUTCDate() - n);
+    return start;
+  }
   const off = offsetMsAt(date, tz);
   const wall = new Date(date.getTime() + off);
   wall.setUTCHours(0, 0, 0, 0);
@@ -160,6 +217,8 @@ export function startOfDayBeforeIn(date: Date, tz: string, n: number): Date {
 /** Length of `date`'s calendar day in `tz`, in ms. 23h / 25h on DST days. */
 export function dayLengthMsIn(date: Date, tz: string): number {
   assertValidDate(date, "dayLengthMsIn");
+  // Every UTC day is exactly 24h — no zone lookup can say otherwise.
+  if (tz === "UTC") return MS_PER_UTC_DAY;
   const start = startOfDayIn(date, tz);
   // +36h then truncate lands squarely inside the NEXT day for any real zone,
   // whether the current one is 23, 24 or 25 hours long.
