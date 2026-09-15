@@ -870,3 +870,70 @@ describe("getUptimeHistory", () => {
     });
   });
 });
+
+describe("month containers follow the page's zone", () => {
+  test("east of UTC, today's data survives the month rollover window", async () => {
+    await withTestTransaction(async (tx) => {
+      const ctx = { ...userCtx, db: tx };
+      // Kiritimati is UTC+14 and never observes DST. At 11:00Z on Sep 30 the
+      // local date is already Oct 1 (01:00). A UTC-derived month list has no
+      // October column yet, so the zoned day key "2026-10-01" matched neither
+      // currentKey nor previousKey and today's counts silently VANISHED from
+      // the tab until UTC caught up — up to ~14h at every month boundary.
+      const testPage = await insertPage(tx, {
+        configuration: { timezone: "Pacific/Kiritimati" },
+      });
+      const testMonitor = await insertMonitor(tx);
+      await insertComponent(tx, {
+        pageId: testPage.id,
+        monitorId: testMonitor.id,
+      });
+
+      // The zoned pipe reports the bucket as the instant Oct 1 BEGINS in the
+      // page's zone: 2026-09-30T10:00:00Z.
+      const pipes = makePipes([
+        {
+          monitorId: String(testMonitor.id),
+          day: "2026-09-30T10:00:00.000Z",
+          ok: 10,
+          degraded: 0,
+          error: 0,
+        },
+      ]);
+
+      const res = await getUptimeHistory({
+        ctx,
+        input: { pageId: testPage.id },
+        pipes,
+        now: new Date("2026-09-30T11:00:00.000Z"),
+        sleep: noSleep,
+      });
+
+      // The newest month column is the ZONE's current month...
+      expect(res.months[res.months.length - 1]).toBe("2026-10");
+      // ...and today's checks are in it, not dropped.
+      expect(res.rows[0].months["2026-10"]).toBe(100);
+    });
+  });
+
+  test("a UTC page's month list is unchanged", async () => {
+    await withTestTransaction(async (tx) => {
+      const ctx = { ...userCtx, db: tx };
+      const testPage = await insertPage(tx);
+      const testMonitor = await insertMonitor(tx);
+      await insertComponent(tx, {
+        pageId: testPage.id,
+        monitorId: testMonitor.id,
+      });
+      const res = await getUptimeHistory({
+        ctx,
+        input: { pageId: testPage.id },
+        pipes: makePipes([]),
+        now: new Date("2026-09-30T11:00:00.000Z"),
+        sleep: noSleep,
+      });
+      expect(res.months[res.months.length - 1]).toBe("2026-09");
+      expect(res.months).toHaveLength(24);
+    });
+  });
+});

@@ -72,18 +72,45 @@ type UptimeHistoryResult = {
   rows: UptimeHistoryRow[];
 };
 
-function monthKeys(now: Date): string[] {
+/**
+ * The 24 month columns, newest last — cut in the page's zone.
+ *
+ * The CURRENT month must be the zone's current month, not UTC's: for a page
+ * east of Greenwich the local date rolls into the next month up to 14h before
+ * UTC does, and during that window a UTC-derived month list has no column for
+ * the zone's "today". The live day counts are keyed by zoned day (below), so
+ * they matched neither currentKey nor previousKey and the newest day's data
+ * silently VANISHED from the tab until UTC caught up. `tz === "UTC"`
+ * reproduces the old list exactly.
+ */
+function monthKeys(now: Date, tz: string): string[] {
+  const [y, m] = dayKeyIn(now, tz).slice(0, 7).split("-").map(Number);
   return Array.from({ length: HISTORY_MONTHS }, (_, i) => {
-    const d = new Date(
-      Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth() - (HISTORY_MONTHS - 1 - i),
-        1,
-      ),
-    );
-    const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-    return `${d.getUTCFullYear()}-${mm}`;
+    const total = y * 12 + (m - 1) - (HISTORY_MONTHS - 1 - i);
+    const yy = Math.floor(total / 12);
+    const mm = (total % 12) + 1;
+    return `${yy}-${String(mm).padStart(2, "0")}`;
   });
+}
+
+/**
+ * The instants a month key spans IN THE PAGE'S ZONE — [start, end).
+ *
+ * `monthRange` (compute.ts) is deliberately untouched: the freeze job cuts
+ * and stores UTC months, and its cutoff arithmetic must keep matching the
+ * rows it wrote. This zoned variant exists for the DISPLAY windows: clamping
+ * a zoned page's events to UTC month edges files a Sep 30 22:00 Bogota
+ * report into October — the exact class of misfiling this effort removes.
+ */
+function monthRangeIn(key: string, tz: string): { start: number; end: number } {
+  if (tz === "UTC") return monthRange(`${key}-01`);
+  const [y, m] = key.split("-").map(Number);
+  const nextKey =
+    m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+  return {
+    start: startOfDayForKeyIn(`${key}-01`, tz).getTime(),
+    end: startOfDayForKeyIn(`${nextKey}-01`, tz).getTime(),
+  };
 }
 
 function requestsMonth(days: DayCount[] | null): MonthValue {
@@ -131,9 +158,10 @@ function eventOnlyMonth(
   events: Event[],
   key: string,
   nowMs: number,
+  tz: string,
   notBeforeMs?: number,
 ): MonthValue {
-  const { start, end } = monthRange(`${key}-01`);
+  const { start, end } = monthRangeIn(key, tz);
   // months fully before the component existed are "no data", not fake 100%
   if (notBeforeMs !== undefined && end <= notBeforeMs) return null;
   const clampedEnd = Math.min(end, nowMs);
@@ -207,7 +235,7 @@ export async function getUptimeHistory(args: {
   // not cut days differently.
   const timeZone = configuration.success ? configuration.data.timezone : "UTC";
 
-  const months = monthKeys(now);
+  const months = monthKeys(now, timeZone);
   const currentKey = months[months.length - 1];
   const previousKey = months[months.length - 2];
 
@@ -279,10 +307,16 @@ export async function getUptimeHistory(args: {
       monitorIdsByJobType,
       pipes,
       tz: zoned ? timeZone : undefined,
-      // The pipes look back a fixed window anyway; this bounds the raw scan to
-      // the same horizon the freeze job uses.
+      // Bounds the raw scan. Two lower bounds, take the earlier: 45 local
+      // days (the freeze horizon), AND the zoned first instant of the
+      // previous month — which for an east-of-UTC page starts up to 14h
+      // BEFORE the 45-day mark when that month is right at the freeze
+      // cutoff, and a `since` past it silently truncated day 1's counts.
       since: zoned
-        ? startOfDayBeforeIn(new Date(nowMs), timeZone, 45).getTime()
+        ? Math.min(
+            startOfDayBeforeIn(new Date(nowMs), timeZone, 45).getTime(),
+            monthRangeIn(previousKey, timeZone).start,
+          )
         : undefined,
       throttleMs: 0,
       sleep: args.sleep,
@@ -352,7 +386,7 @@ export async function getUptimeHistory(args: {
           // manual mode still keys "did the monitor run" off counts: a
           // zero-check month has no meaningful uptime in any mode
           value = days?.some((d) => d.ok + d.degraded + d.error > 0)
-            ? eventOnlyMonth(events, key, nowMs)
+            ? eventOnlyMonth(events, key, nowMs, timeZone)
             : null;
         }
       } else {
@@ -360,6 +394,7 @@ export async function getUptimeHistory(args: {
           events,
           key,
           nowMs,
+          timeZone,
           c.createdAt?.getTime() ?? undefined,
         );
       }
@@ -411,7 +446,7 @@ export async function getUptimeHistory(args: {
 
   const summary = {} as UptimeHistoryResult["summary"];
   for (const w of WINDOWS) {
-    const windowStart = monthRange(`${months[months.length - w]}-01`).start;
+    const windowStart = monthRangeIn(months[months.length - w], timeZone).start;
     const seen = new Set<number>();
     for (const e of pageEvents) {
       if (e.type !== "report") continue;
