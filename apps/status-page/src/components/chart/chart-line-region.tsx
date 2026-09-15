@@ -26,18 +26,29 @@ export type TrendPoint = {
 export function ChartLineRegion({
   className,
   data,
+  // The page's display zone. Defaults to UTC rather than the viewer's zone:
+  // this renders inside a status page whose every other date is cut in the
+  // configured zone, and "default" (viewer) formatting also differs between
+  // the SSR pass and the hydrated client. NOTE: currently unmounted in this
+  // app (the dashboard has its own copy) — the prop is here so the next
+  // consumer cannot reintroduce the viewer-zone bug by omission.
+  timeZone = "UTC",
+  locale,
 }: {
   className?: string;
   data: TrendPoint[];
+  timeZone?: string;
+  locale?: string;
 }) {
   const trendData = data ?? [];
 
   const chartData = trendData.map((d) => ({
-    timestamp: new Date(d.timestamp).toLocaleString("default", {
+    timestamp: new Date(d.timestamp).toLocaleString(locale, {
       hour: "numeric",
       minute: "numeric",
       day: "numeric",
       month: "short",
+      timeZone,
     }),
     latency: d.latency,
   }));

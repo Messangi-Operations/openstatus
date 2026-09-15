@@ -50,6 +50,7 @@ import {
   formatNumber,
   formatPercentage,
 } from "../../../../../../../lib/formatter";
+import { formatChartTimestamp } from "../../../../../../../lib/formatter";
 import { useTRPC } from "../../../../../../../lib/trpc/client";
 import { searchParamsParsers } from "./search-params";
 
@@ -57,7 +58,11 @@ export default function Page() {
   const t = useExtracted();
   const [{ tab }, setSearchParams] = useQueryStates(searchParamsParsers);
   const trpc = useTRPC();
-  const { id, domain } = useParams<{ id: string; domain: string }>();
+  const { id, domain, locale } = useParams<{
+    id: string;
+    domain: string;
+    locale: string;
+  }>();
   const { data: page } = useQuery(
     trpc.statusPage.get.queryOptions({ slug: domain }),
   );
@@ -67,6 +72,13 @@ export default function Page() {
   }, [page, id]);
 
   if (!page) return null;
+
+  // Chart labels follow the page's configured zone like every other date on
+  // the page. Formatting in the viewer's zone showed a different calendar day
+  // to each reader — and, worse, the formatted string was used as a GROUPING
+  // key below, so the SSR pass (server zone) and the client (browser zone)
+  // could group the same data differently.
+  const timeZone = page.configuration?.timezone ?? "UTC";
 
   const { data: monitor, isLoading } = useQuery(
     trpc.statusPage.getMonitor.queryOptions({ id: Number(id), slug: domain }),
@@ -79,61 +91,48 @@ export default function Page() {
       .sort((a, b) => a.timestamp - b.timestamp)
       .map((item) => ({
         ...item,
-        timestamp: new Date(item.timestamp).toLocaleString("default", {
-          day: "numeric",
-          month: "short",
-          hour: "numeric",
-          minute: "numeric",
-          timeZoneName: "short",
-        }),
+        timestamp: formatChartTimestamp(item.timestamp, locale, timeZone),
       }));
-  }, [monitor?.data.latency?.data]);
+  }, [monitor?.data.latency?.data, locale, timeZone]);
 
   const regionLatencyData = useMemo(() => {
     if (!monitor?.data.regions?.data) return [];
 
+    // Group by the RAW instant, never by a formatted string: two instants
+    // that happen to render identically must not merge, and the rendering
+    // must not decide the data shape.
     const grouped = monitor.data.regions.data
       .sort((a, b) => a.timestamp - b.timestamp)
       .reduce(
         (acc, item) => {
-          const timestamp = new Date(item.timestamp).toLocaleString("default", {
-            day: "numeric",
-            month: "short",
-            hour: "numeric",
-            minute: "numeric",
-            timeZoneName: "short",
-          });
-
-          if (!acc[timestamp]) {
-            acc[timestamp] = { timestamp };
+          let bucket = acc.get(item.timestamp);
+          if (!bucket) {
+            bucket = {
+              timestamp: formatChartTimestamp(item.timestamp, locale, timeZone),
+            };
+            acc.set(item.timestamp, bucket);
           }
-          acc[timestamp][item.region] = item.p75Latency;
+          bucket[item.region] = item.p75Latency;
           return acc;
         },
-        {} as Record<
-          string,
+        new Map<
+          number,
           { timestamp: string; [region: string]: number | string | null }
-        >,
+        >(),
       );
 
-    return Object.values(grouped);
-  }, [monitor?.data.regions?.data]);
+    return [...grouped.values()];
+  }, [monitor?.data.regions?.data, locale, timeZone]);
 
   const uptimeData = useMemo(() => {
     if (!monitor?.data.uptime?.data) return [];
     return monitor.data.uptime.data
       .sort((a, b) => a.interval.getTime() - b.interval.getTime())
       .map((item) => ({
-        timestamp: item.interval.toLocaleString("default", {
-          day: "numeric",
-          month: "short",
-          hour: "numeric",
-          minute: "numeric",
-          timeZoneName: "short",
-        }),
+        timestamp: formatChartTimestamp(item.interval, locale, timeZone),
         ...item,
       }));
-  }, [monitor?.data.uptime?.data]);
+  }, [monitor?.data.uptime?.data, locale, timeZone]);
 
   const { totalChecks, uptimePercentage, slowestRegion, p75Range } =
     useMemo(() => {

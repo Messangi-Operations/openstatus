@@ -123,10 +123,14 @@ export default function VerifyPage() {
             {subscription.unsubscribedAt ? (
               <span className="text-destructive">
                 {t("Unsubscribed on {date}", {
+                  // Cut the calendar day in the page's zone: near local
+                  // midnight the viewer-zone date names a different day than
+                  // every other date on this page.
                   date: Intl.DateTimeFormat(locale, {
                     year: "numeric",
                     month: "long",
                     day: "numeric",
+                    timeZone: page?.configuration?.timezone ?? "UTC",
                   }).format(subscription.unsubscribedAt),
                 })}
               </span>

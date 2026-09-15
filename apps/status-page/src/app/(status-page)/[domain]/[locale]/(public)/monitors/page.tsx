@@ -20,10 +20,11 @@ import {
   ChartAreaPercentilesSkeleton,
 } from "../../../../../../components/chart/chart-area-percentiles";
 import { StatusBlankMonitors } from "../../../../../../components/status-page/status-blank";
+import { formatChartTimestamp } from "../../../../../../lib/formatter";
 import { useTRPC } from "../../../../../../lib/trpc/client";
 
 export default function Page() {
-  const { domain } = useParams<{ domain: string }>();
+  const { domain, locale } = useParams<{ domain: string; locale: string }>();
   const trpc = useTRPC();
   const { data: page } = useQuery(
     trpc.statusPage.get.queryOptions({ slug: domain }),
@@ -36,6 +37,9 @@ export default function Page() {
 
   // Filter for public monitors only (sorting is handled server-side)
   const publicMonitors = page.monitors.filter((monitor) => monitor.public);
+  // Chart labels are cut in the page's zone like every other date on the
+  // page — not the viewer's, which differs per reader and across SSR.
+  const timeZone = page.configuration?.timezone ?? "UTC";
 
   return (
     <Status>
@@ -51,16 +55,10 @@ export default function Page() {
                 ?.find((item) => item.id === monitor.id)
                 ?.data?.map((item) => ({
                   ...item,
-                  // TODO: create formatter
-                  timestamp: new Date(item.timestamp).toLocaleString(
-                    "default",
-                    {
-                      day: "numeric",
-                      month: "short",
-                      hour: "numeric",
-                      minute: "numeric",
-                      timeZoneName: "short",
-                    },
+                  timestamp: formatChartTimestamp(
+                    item.timestamp,
+                    locale,
+                    timeZone,
                   ),
                 })) ?? [];
 

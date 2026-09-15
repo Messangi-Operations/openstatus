@@ -106,6 +106,32 @@ export function formatDateTime(date: Date, locale?: string, timeZone = "UTC") {
   });
 }
 
+/**
+ * Tick/tooltip label for the monitor charts: "Sep 14, 9:00 PM GMT-5".
+ *
+ * Takes the page's zone explicitly for the same reason every other formatter
+ * here does — these charts sit inside a page whose day labels are all cut in
+ * the configured zone, and a chart that formats in the VIEWER'S zone shows a
+ * different calendar day to each reader (and a different string during SSR
+ * than after hydration, since the server has its own zone). The zone suffix
+ * stays visible so a reader comparing against their local clock can tell why
+ * the numbers differ.
+ */
+export function formatChartTimestamp(
+  date: Date | number,
+  locale?: string,
+  timeZone = "UTC",
+) {
+  return new Date(date).toLocaleString(locale, {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "numeric",
+    timeZoneName: "short",
+    timeZone,
+  });
+}
+
 export function formatTime(date: Date, locale?: string, timeZone = "UTC") {
   return date.toLocaleTimeString(locale, {
     hour: "numeric",
