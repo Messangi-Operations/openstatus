@@ -18,8 +18,30 @@
  * zone.
  */
 
+
+/**
+ * Every function here rejects an invalid Date up front, loudly.
+ *
+ * Deliberate choice, documented once: the pre-timezone code let a NaN date
+ * flow through `setUTCHours`, producing NaN windows that silently matched no
+ * event and no bucket — a bar that renders wrong with no error anywhere. The
+ * Intl path already threw (RangeError, from `formatToParts`), but only on the
+ * non-UTC branch, so the two branches disagreed about the same bad input.
+ * Throwing uniformly keeps UTC and zoned behaviour identical and turns corrupt
+ * bucket data into a visible failure at the seam it entered through. Upstream,
+ * bucket days come out of zod transforms that reject unparseable strings, so
+ * nothing reachable in production hits this without the data already being
+ * corrupt.
+ */
+function assertValidDate(date: Date, caller: string): void {
+  if (Number.isNaN(date.getTime())) {
+    throw new RangeError(`${caller}: invalid Date`);
+  }
+}
+
 /** Calendar date in `tz` as `YYYY-MM-DD`. "en-CA" is the locale that yields it. */
 export function dayKeyIn(date: Date, tz: string): string {
+  assertValidDate(date, "dayKeyIn");
   return date.toLocaleDateString("en-CA", { timeZone: tz });
 }
 
@@ -39,11 +61,23 @@ function offsetMsAt(date: Date, tz: string): number {
     .formatToParts(date)
     .find((p) => p.type === "timeZoneName")?.value;
 
-  // "GMT-05:00", or bare "GMT" at zero offset.
-  const m = /GMT([+-])(\d{2}):(\d{2})/.exec(name ?? "");
-  if (!m) return 0;
+  // "GMT-05:00" normally; bare "GMT" at zero offset; "GMT+00:19:32"-style
+  // seconds for pre-1912 LMT dates. Anything else is a runtime whose ICU does
+  // not implement "longOffset" — and that MUST throw, not fall through: a
+  // silent 0 here would quietly turn every configured zone into UTC, the exact
+  // fail-silent class this module exists to avoid.
+  if (name === "GMT") return 0;
+  const m = /^GMT([+-])(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(name ?? "");
+  if (!m) {
+    throw new Error(
+      `offsetMsAt: cannot parse longOffset ${JSON.stringify(name)} for zone ${JSON.stringify(tz)}`,
+    );
+  }
   const sign = m[1] === "-" ? -1 : 1;
-  return sign * (Number(m[2]) * 60 + Number(m[3])) * 60_000;
+  return (
+    sign *
+    ((Number(m[2]) * 60 + Number(m[3])) * 60_000 + Number(m[4] ?? 0) * 1_000)
+  );
 }
 
 /**
@@ -55,6 +89,8 @@ function offsetMsAt(date: Date, tz: string): number {
  * transition starts an hour off.
  */
 export function startOfDayIn(date: Date, tz: string): Date {
+  assertValidDate(date, "startOfDayIn");
+  const key = dayKeyIn(date, tz);
   const off = offsetMsAt(date, tz);
   const wall = new Date(date.getTime() + off);
   wall.setUTCHours(0, 0, 0, 0);
@@ -63,11 +99,31 @@ export function startOfDayIn(date: Date, tz: string): Date {
   const off2 = offsetMsAt(start, tz);
   if (off2 !== off) start = new Date(wall.getTime() - off2);
 
-  // A spring-forward transition can leave the computed midnight inside the
-  // skipped hour, landing on the previous day. Nudge forward to the real start.
-  if (dayKeyIn(start, tz) !== dayKeyIn(date, tz)) {
+  if (dayKeyIn(start, tz) !== key) {
+    // A spring-forward transition can leave the computed midnight inside the
+    // skipped hour, landing on the previous day. Nudge forward to the real
+    // start (America/Santiago, America/Havana in spring, and every other zone
+    // whose clocks jump forward exactly at midnight).
     const nudged = new Date(start.getTime() + 60 * 60 * 1000);
-    if (dayKeyIn(nudged, tz) === dayKeyIn(date, tz)) return nudged;
+    if (dayKeyIn(nudged, tz) === key) return nudged;
+    return start;
+  }
+
+  // Fall-back AT midnight (America/Havana, Atlantic/Azores: clocks go
+  // 01:00 -> 00:00, so local midnight happens twice). Both passes above agree
+  // on the SECOND occurrence, because the offset at `date` and at that second
+  // midnight are the same post-transition value — which is why a two-pass
+  // scheme alone cannot see the problem. The tell is the instant just before
+  // `start`: if the offset there was larger, the transition landed exactly on
+  // `start`, meaning the same wall-clock midnight already happened once,
+  // exactly (offBefore - offAtStart) earlier. A day's start is its FIRST
+  // midnight — an incident during the repeated hour belongs to this day, and
+  // the day really is 25 hours long.
+  const offAtStart = offsetMsAt(start, tz);
+  const offBefore = offsetMsAt(new Date(start.getTime() - 1), tz);
+  if (offBefore > offAtStart) {
+    const first = new Date(start.getTime() - (offBefore - offAtStart));
+    if (dayKeyIn(first, tz) === key) return first;
   }
   return start;
 }
@@ -79,6 +135,14 @@ export function startOfDayIn(date: Date, tz: string): Date {
  * 23- and 25-hour days do not accumulate drift.
  */
 export function startOfDayBeforeIn(date: Date, tz: string, n: number): Date {
+  assertValidDate(date, "startOfDayBeforeIn");
+  // Known, accepted limit: a zone that SKIPS an entire calendar day
+  // (Pacific/Apia jumped from Dec 29 to Dec 31, 2011) makes two values of `n`
+  // resolve to the same real day, so a 45-day grid crossing the skip renders
+  // 44 unique days with one duplicated. No zone has done this since 2011 and
+  // none has it scheduled; detecting it here would complicate every call for a
+  // case that cannot currently occur. If a country announces one again, this
+  // is the function to revisit.
   const off = offsetMsAt(date, tz);
   const wall = new Date(date.getTime() + off);
   wall.setUTCHours(0, 0, 0, 0);
@@ -95,6 +159,7 @@ export function startOfDayBeforeIn(date: Date, tz: string, n: number): Date {
 
 /** Length of `date`'s calendar day in `tz`, in ms. 23h / 25h on DST days. */
 export function dayLengthMsIn(date: Date, tz: string): number {
+  assertValidDate(date, "dayLengthMsIn");
   const start = startOfDayIn(date, tz);
   // +36h then truncate lands squarely inside the NEXT day for any real zone,
   // whether the current one is 23, 24 or 25 hours long.
