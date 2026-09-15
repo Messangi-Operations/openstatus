@@ -333,35 +333,97 @@ function toDate(date: Date | string | number): Date {
   return date instanceof Date ? date : new Date(date);
 }
 
-/** "Jan 25, 2026" (UTC, deterministic). */
-export function formatDay(date: Date | string | number): string {
-  const d = toDate(date);
-  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+/**
+ * Wall-clock parts of `d` in `tz`, via a cached per-zone formatter.
+ *
+ * The markdown surface is served to machines as much as humans, so its output
+ * must be deterministic: month names come from the fixed MONTHS table (never a
+ * locale), and only the NUMERIC fields are read from Intl. The zone matters
+ * because these strings label days on a page that may have a configured
+ * display zone — a Bogota page must not say "Sep 15" where its HTML says
+ * "Sep 14". `tz === "UTC"` never reaches this (callers keep the original
+ * arithmetic path), so unconfigured pages render byte-identical output.
+ */
+const ZONE_PART_FORMATTERS = new Map<string, Intl.DateTimeFormat>();
+function wallClockParts(
+  d: Date,
+  tz: string,
+): { year: number; month: number; day: number; hour: number; minute: number } {
+  let dtf = ZONE_PART_FORMATTERS.get(tz);
+  if (!dtf) {
+    dtf = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    });
+    ZONE_PART_FORMATTERS.set(tz, dtf);
+  }
+  const parts: Record<string, string> = {};
+  for (const p of dtf.formatToParts(d)) parts[p.type] = p.value;
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+    hour: Number(parts.hour),
+    minute: Number(parts.minute),
+  };
 }
 
-/** "Feb 3, 1:42 PM" (UTC, deterministic). Null/invalid → "—". */
+/** "Jan 25, 2026" in the page's zone (UTC when none is configured). */
+export function formatDay(date: Date | string | number, tz = "UTC"): string {
+  const d = toDate(date);
+  if (tz === "UTC") {
+    return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+  }
+  const w = wallClockParts(d, tz);
+  return `${MONTHS[w.month - 1]} ${w.day}, ${w.year}`;
+}
+
+/** "Feb 3, 1:42 PM" in the page's zone. Null/invalid → "—". */
 export function formatDayTime(
   date: Date | string | number | null | undefined,
+  tz = "UTC",
 ): string {
   if (date === null || date === undefined) return "—";
   const d = toDate(date);
   if (Number.isNaN(d.getTime())) return "—";
-  const h = d.getUTCHours();
-  const period = h < 12 ? "AM" : "PM";
-  const hour12 = h % 12 === 0 ? 12 : h % 12;
-  const minutes = String(d.getUTCMinutes()).padStart(2, "0");
-  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${hour12}:${minutes} ${period}`;
+  const w =
+    tz === "UTC"
+      ? {
+          month: d.getUTCMonth() + 1,
+          day: d.getUTCDate(),
+          hour: d.getUTCHours(),
+          minute: d.getUTCMinutes(),
+        }
+      : wallClockParts(d, tz);
+  const period = w.hour < 12 ? "AM" : "PM";
+  const hour12 = w.hour % 12 === 0 ? 12 : w.hour % 12;
+  const minutes = String(w.minute).padStart(2, "0");
+  return `${MONTHS[w.month - 1]} ${w.day}, ${hour12}:${minutes} ${period}`;
 }
 
-/** "2026-06-18 14:50" (UTC, sortable, fixed-width). */
-export function formatLogStamp(date: Date | string | number): string {
+/** "2026-06-18 14:50" in the page's zone (sortable, fixed-width). */
+export function formatLogStamp(date: Date | string | number, tz = "UTC"): string {
   const d = toDate(date);
-  const yyyy = d.getUTCFullYear();
-  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(d.getUTCDate()).padStart(2, "0");
-  const hh = String(d.getUTCHours()).padStart(2, "0");
-  const min = String(d.getUTCMinutes()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+  const w =
+    tz === "UTC"
+      ? {
+          year: d.getUTCFullYear(),
+          month: d.getUTCMonth() + 1,
+          day: d.getUTCDate(),
+          hour: d.getUTCHours(),
+          minute: d.getUTCMinutes(),
+        }
+      : wallClockParts(d, tz);
+  const mm = String(w.month).padStart(2, "0");
+  const dd = String(w.day).padStart(2, "0");
+  const hh = String(w.hour).padStart(2, "0");
+  const min = String(w.minute).padStart(2, "0");
+  return `${w.year}-${mm}-${dd} ${hh}:${min}`;
 }
 
 export type EventLogRow = {
@@ -378,7 +440,7 @@ export type EventLogRow = {
  * which trails as free text. Newlines are stripped from the title so it can't
  * inject a line that closes the fenced block.
  */
-export function eventLog(rows: EventLogRow[]): string {
+export function eventLog(rows: EventLogRow[], tz = "UTC"): string {
   if (rows.length === 0) return "";
   const sorted = [...rows].sort(
     (a, b) => toDate(b.timestamp).getTime() - toDate(a.timestamp).getTime(),
@@ -388,17 +450,49 @@ export function eventLog(rows: EventLogRow[]): string {
   const header = `# ${"timestamp".padEnd(16)}  ${"status".padEnd(statusW)}  event`;
   const lines = sorted.map(
     (r) =>
-      `${formatLogStamp(r.timestamp)}  ${r.label.padEnd(statusW)}  ${r.ref.padEnd(refW)}  ${r.glyph} ${r.title.replace(/[\r\n]+/g, " ")}`,
+      `${formatLogStamp(r.timestamp, tz)}  ${r.label.padEnd(statusW)}  ${r.ref.padEnd(refW)}  ${r.glyph} ${r.title.replace(/[\r\n]+/g, " ")}`,
   );
   return ["```text", header, ...lines, "```"].join("\n");
 }
 
-/** "Jun 18, 2026 14:50 (GMT+0)" (UTC, deterministic). */
-export function formatStamp(date: Date | string | number): string {
+/**
+ * The zone label appended to stamps: "GMT+0" for UTC (byte-identical to the
+ * historical output), otherwise the real offset at that instant — "GMT-5",
+ * "GMT+5:30" — read from Intl's shortOffset name, so DST is reflected rather
+ * than hardcoded. Deliberately an OFFSET, not an abbreviation like "COT":
+ * offsets are unambiguous and locale-independent, which machine consumers of
+ * this surface depend on.
+ */
+const ZONE_STAMP_FORMATTERS = new Map<string, Intl.DateTimeFormat>();
+function zoneStampLabel(d: Date, tz: string): string {
+  let dtf = ZONE_STAMP_FORMATTERS.get(tz);
+  if (!dtf) {
+    dtf = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      timeZoneName: "shortOffset",
+    });
+    ZONE_STAMP_FORMATTERS.set(tz, dtf);
+  }
+  const name = dtf
+    .formatToParts(d)
+    .find((p) => p.type === "timeZoneName")?.value;
+  // Bare "GMT" (zero offset) keeps the explicit "+0" the surface always had.
+  if (!name || name === "GMT") return "GMT+0";
+  return name;
+}
+
+/** "Jun 18, 2026 14:50 (GMT+0)" — page zone, offset shown explicitly. */
+export function formatStamp(date: Date | string | number, tz = "UTC"): string {
   const d = toDate(date);
-  const hh = String(d.getUTCHours()).padStart(2, "0");
-  const mm = String(d.getUTCMinutes()).padStart(2, "0");
-  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()} ${hh}:${mm} (GMT+0)`;
+  if (tz === "UTC") {
+    const hh = String(d.getUTCHours()).padStart(2, "0");
+    const mm = String(d.getUTCMinutes()).padStart(2, "0");
+    return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()} ${hh}:${mm} (GMT+0)`;
+  }
+  const w = wallClockParts(d, tz);
+  const hh = String(w.hour).padStart(2, "0");
+  const mm = String(w.minute).padStart(2, "0");
+  return `${MONTHS[w.month - 1]} ${w.day}, ${w.year} ${hh}:${mm} (${zoneStampLabel(d, tz)})`;
 }
 
 const MINUTE = 60_000;

@@ -44,8 +44,15 @@ export type MaintenanceDetail = NonNullable<
 >;
 
 // Detail payloads don't carry the page's homepage/contact URLs — thread them in
-// from getLight so a directly-fetched detail page has those nav anchors.
-type PageUrls = { homepageUrl?: string | null; contactUrl?: string | null };
+// from getLight so a directly-fetched detail page has those nav anchors. The
+// display zone rides along for the same reason: a detail payload has no page
+// configuration, and its day labels must be cut in the same zone as the HTML
+// page's, or the .md route says "Sep 15" where the page says "Sep 14".
+type PageUrls = {
+  homepageUrl?: string | null;
+  contactUrl?: string | null;
+  timezone?: string;
+};
 
 function avg(values: number[]): number | null {
   if (values.length === 0) return null;
@@ -59,6 +66,9 @@ export function generateOverview(
   showUptime = true,
 ): string {
   const now = Date.now();
+  // The page's display zone (already parsed and canonicalized upstream by
+  // pageConfigurationSchema). Every day/time label below must use it.
+  const tz = page.configuration?.timezone ?? "UTC";
   const out: string[] = [];
 
   const activeReports = page.statusReports.filter(
@@ -108,7 +118,7 @@ export function generateOverview(
   );
   if (page.description) out.push(`> ${page.description}\n`);
   out.push(
-    `\`${statusGlyph(page.status)}\` **${statusLabel(page.status)}** · ${formatStamp(now)}\n`,
+    `\`${statusGlyph(page.status)}\` **${statusLabel(page.status)}** · ${formatStamp(now, tz)}\n`,
   );
 
   const componentNames = (
@@ -139,7 +149,7 @@ export function generateOverview(
     for (const m of activeMaintenance) {
       const affects = componentNames(m.maintenancesToPageComponents);
       const head = [
-        `- ${statusGlyph("info")} **${m.title}** — ${formatDay(m.from)} → ${formatDay(m.to)}`,
+        `- ${statusGlyph("info")} **${m.title}** — ${formatDay(m.from, tz)} → ${formatDay(m.to, tz)}`,
         affects.length ? `affects: ${affects.join(", ")}` : null,
         mdUrl(`events/maintenance/${m.id}`),
       ].filter(Boolean);
@@ -294,6 +304,7 @@ export function generateEventsList(
   baseUrl: string,
 ): string {
   const now = Date.now();
+  const tz = page.configuration?.timezone ?? "UTC";
   const out: string[] = [];
   out.push(
     frontmatter({
@@ -353,7 +364,7 @@ export function generateEventsList(
   }
   if (logRows.length > 0) {
     out.push("## Event log\n");
-    out.push(`${eventLog(logRows)}\n`);
+    out.push(`${eventLog(logRows, tz)}\n`);
   }
 
   if (page.statusReports.length === 0) {
@@ -393,7 +404,7 @@ export function generateEventsList(
         .filter((v): v is string => Boolean(v));
 
       const meta = [
-        start ? formatDay(start) : null,
+        start ? formatDay(start, tz) : null,
         start ? relativeTime(start, now) : null,
         affects.length ? `affects: ${affects.join(", ")}` : null,
         oldest && updates[0]
@@ -412,7 +423,7 @@ export function generateEventsList(
             return name ? componentImpactExplicit(name, ci.impact) : null;
           })
           .filter((v): v is string => Boolean(v));
-        const head = `- ${reportStatusGlyph(update.status)} ${statusLabel(update.status)} — ${formatDayTime(update.date)}`;
+        const head = `- ${reportStatusGlyph(update.status)} ${statusLabel(update.status)} — ${formatDayTime(update.date, tz)}`;
         out.push(
           updateAffects.length ? `${head} · ${updateAffects.join(", ")}` : head,
         );
@@ -428,7 +439,7 @@ export function generateEventsList(
         .map((c) => c.pageComponent?.name)
         .filter((name): name is string => Boolean(name));
       const meta = [
-        formatDay(m.from),
+        formatDay(m.from, tz),
         m.to ? humanDuration(m.from, m.to) : null,
         affects.length ? `affects: ${affects.join(", ")}` : null,
       ].filter(Boolean);
@@ -449,6 +460,7 @@ export function generateReport(
   page?: PageUrls,
 ): string {
   const now = Date.now();
+  const tz = page?.timezone ?? "UTC";
   const updates = report.statusReportUpdates;
   const oldest = updates[updates.length - 1];
   const latest = updates[0];
@@ -466,7 +478,7 @@ export function generateReport(
     [
       latest ? statusLabel(latest.status) : null,
       components.length ? `affects ${components.join(", ")}` : null,
-      oldest ? formatDay(oldest.date) : null,
+      oldest ? formatDay(oldest.date, tz) : null,
     ]
       .filter(Boolean)
       .join(" · ") || `Status report: ${report.title}`;
@@ -492,7 +504,7 @@ export function generateReport(
   );
   const meta = [
     oldest
-      ? `${formatDay(oldest.date)} · ${relativeTime(oldest.date, now)}`
+      ? `${formatDay(oldest.date, tz)} · ${relativeTime(oldest.date, now)}`
       : null,
     components.length ? `affects: ${components.join(", ")}` : null,
     oldest && updates[0] ? humanDuration(oldest.date, updates[0].date) : null,
@@ -511,7 +523,7 @@ export function generateReport(
         })
         .filter((v): v is string => Boolean(v));
       out.push(
-        `### ${reportStatusGlyph(update.status)} ${statusLabel(update.status)} — ${formatDayTime(update.date)}\n`,
+        `### ${reportStatusGlyph(update.status)} ${statusLabel(update.status)} — ${formatDayTime(update.date, tz)}\n`,
       );
       if (updateAffects.length)
         out.push(`affects: ${updateAffects.join(", ")}\n`);
@@ -527,6 +539,7 @@ export function generateMaintenance(
   baseUrl: string,
   page?: PageUrls,
 ): string {
+  const tz = page?.timezone ?? "UTC";
   const out: string[] = [];
   out.push(
     frontmatter({
@@ -547,7 +560,7 @@ export function generateMaintenance(
     ])}\n`,
   );
   const windowLine = [
-    `${formatDayTime(maintenance.from)} → ${formatDayTime(maintenance.to)}`,
+    `${formatDayTime(maintenance.from, tz)} → ${formatDayTime(maintenance.to, tz)}`,
     maintenance.to
       ? humanDuration(maintenance.from, maintenance.to)
       : "ongoing",

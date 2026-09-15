@@ -86,6 +86,10 @@ const gateFieldsSchema = selectPageSchema.pick({
   allowedIpRanges: true,
   homepageUrl: true,
   contactUrl: true,
+  // The markdown detail routes render day/time labels and gate through this
+  // query; without the configuration they would have no page zone and would
+  // silently fall back to UTC labels on a zoned page.
+  configuration: true,
 });
 
 export const statusPageRouter = createTRPCRouter({
@@ -634,6 +638,7 @@ export const statusPageRouter = createTRPCRouter({
           allowedIpRanges: true,
           homepageUrl: true,
           contactUrl: true,
+          configuration: true,
         },
         with: { workspace: true },
       });

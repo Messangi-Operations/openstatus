@@ -184,6 +184,7 @@ export async function GET(
             generateReport(report, baseUrl, {
               homepageUrl: light.homepageUrl,
               contactUrl: light.contactUrl,
+              timezone: light.configuration?.timezone,
             }),
             source,
             light.whiteLabel,
@@ -199,6 +200,7 @@ export async function GET(
           generateMaintenance(maintenance, baseUrl, {
             homepageUrl: light.homepageUrl,
             contactUrl: light.contactUrl,
+            timezone: light.configuration?.timezone,
           }),
           source,
           light.whiteLabel,
