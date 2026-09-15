@@ -1,5 +1,10 @@
 import { and, asc, eq, inArray } from "@openstatus/db";
-import { incidentTable, pageComponent } from "@openstatus/db/src/schema";
+import {
+  incidentTable,
+  page,
+  pageComponent,
+  pageConfigurationSchema,
+} from "@openstatus/db/src/schema";
 import type {
   PageComponentImpact,
   PageComponentType,
@@ -15,6 +20,7 @@ import {
   fillStatusDataFor45Days,
   getEvents,
   resolveDayStatus,
+  startOfDayBeforeIn,
 } from "../status-timeline";
 import { GetPageComponentDailySummaryInput } from "./schemas";
 
@@ -61,6 +67,30 @@ export async function getPageComponentDailySummary(args: {
   const tb = ctx.tb ?? defaultTb;
   const days = input.days ?? 45;
 
+  // The summary is bucketed in the same zone the status page renders in. A page
+  // has one notion of "a day"; if this RPC kept UTC days while the page moved to
+  // local ones, the two surfaces would disagree about which day an outage fell
+  // on — the exact inconsistency this work exists to remove.
+  //
+  // `.catch("UTC")` inside the schema plus `safeParse` here mean a malformed
+  // stored configuration degrades this to UTC rather than failing the call.
+  const pageRow = await db
+    .select({ configuration: page.configuration })
+    .from(page)
+    .where(eq(page.id, input.pageId))
+    .get();
+  const parsedConfiguration = pageConfigurationSchema.safeParse(
+    pageRow?.configuration ?? {},
+  );
+  const tz = parsedConfiguration.success
+    ? parsedConfiguration.data.timezone
+    : "UTC";
+  const since = startOfDayBeforeIn(
+    new Date(),
+    tz,
+    Math.max(0, days - 1),
+  ).getTime();
+
   const conditions = [
     eq(pageComponent.pageId, input.pageId),
     eq(pageComponent.workspaceId, input.workspaceId),
@@ -95,6 +125,8 @@ export async function getPageComponentDailySummary(args: {
       tb,
       monitorIds,
       workspaceId: input.workspaceId,
+      tz,
+      since,
     }),
     db.query.maintenance.findMany({
       where: (m, { eq }) => eq(m.pageId, input.pageId),
@@ -139,10 +171,10 @@ export async function getPageComponentDailySummary(args: {
     const monitorKey =
       component.monitorId != null ? String(component.monitorId) : "";
     const stats = statsByMonitor.get(monitorKey) ?? [];
-    const filled = fillStatusDataFor45Days(stats, monitorKey, days);
+    const filled = fillStatusDataFor45Days(stats, monitorKey, days, tz);
 
     const buckets: ComponentDayBucket[] = filled.map((bucket) => {
-      const { status, impact } = resolveDayStatus(bucket, events);
+      const { status, impact } = resolveDayStatus(bucket, events, tz);
       return {
         day: bucket.day,
         count: bucket.count,

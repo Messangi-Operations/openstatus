@@ -34,6 +34,7 @@ import {
   activeReportStatus,
   fillStatusDataFor45Days,
   fillStatusDataFor45DaysNoop,
+  startOfDayBeforeIn,
   getEvents,
   getUptime,
   getWorstVariant,
@@ -741,6 +742,30 @@ export const statusPageRouter = createTRPCRouter({
       // Early return if no components to process
       if (pageComponents.length === 0) return [];
 
+      // Parsed here rather than after the reads, because the reads themselves
+      // now depend on the zone and the window. `pageConfigurationSchema` carries
+      // `.catch("UTC")` on `timezone`, so a stale or unknown value stored in the
+      // column degrades this page to UTC instead of 500ing it; `safeParse`
+      // covers the rest of the object failing for the same reason.
+      const parsedConfiguration = pageConfigurationSchema.safeParse(
+        _page.configuration ?? {},
+      );
+      const timeZone = parsedConfiguration.success
+        ? parsedConfiguration.data.timezone
+        : "UTC";
+      const lookbackPeriod =
+        input.days ??
+        (parsedConfiguration.success ? parsedConfiguration.data.days : 45);
+
+      // Lower bound for the zoned raw-datasource read: the start of the oldest
+      // day the grid will render, in the page's zone. The UTC pipes ignore it —
+      // their materialized view already has a fixed 45-day horizon.
+      const since = startOfDayBeforeIn(
+        new Date(),
+        timeZone,
+        Math.max(0, lookbackPeriod - 1),
+      ).getTime();
+
       const monitors = pageComponents.filter(isMonitorComponent);
 
       const monitorsByType = {
@@ -752,11 +777,11 @@ export const statusPageRouter = createTRPCRouter({
       };
 
       const proceduresByType = {
-        http: getStatusProcedure("45d", "http"),
-        tcp: getStatusProcedure("45d", "tcp"),
-        dns: getStatusProcedure("45d", "dns"),
-        icmp: getStatusProcedure("45d", "icmp"),
-        grpc: getStatusProcedure("45d", "grpc"),
+        http: getStatusProcedure("45d", "http", timeZone),
+        tcp: getStatusProcedure("45d", "tcp", timeZone),
+        dns: getStatusProcedure("45d", "dns", timeZone),
+        icmp: getStatusProcedure("45d", "icmp", timeZone),
+        grpc: getStatusProcedure("45d", "grpc", timeZone),
       };
 
       // Manual mode never touches Tinybird. Otherwise race the reads against
@@ -771,7 +796,7 @@ export const statusPageRouter = createTRPCRouter({
                   type as keyof typeof proceduresByType
                 ].map((c) => c.monitor.id.toString());
                 if (monitorIds.length === 0) return null;
-                return procedure({ monitorIds });
+                return procedure({ monitorIds, since });
               }),
             ),
       );
@@ -808,13 +833,6 @@ export const statusPageRouter = createTRPCRouter({
         }
       }
 
-      const parsedConfiguration = pageConfigurationSchema.safeParse(
-        _page.configuration ?? {},
-      );
-      const lookbackPeriod =
-        input.days ??
-        (parsedConfiguration.success ? parsedConfiguration.data.days : 45);
-
       return pageComponents.map((c) => {
         const events = getEvents({
           maintenances: _page.maintenances,
@@ -842,6 +860,7 @@ export const statusPageRouter = createTRPCRouter({
             rawData,
             monitorId,
             lookbackPeriod,
+            timeZone,
           );
         } else {
           // Static components, manual mode, or NOOP mode: use synthetic data
@@ -849,6 +868,7 @@ export const statusPageRouter = createTRPCRouter({
             errorDays: [],
             degradedDays: [],
             lookbackPeriod,
+            tz: timeZone,
           });
         }
 
@@ -863,12 +883,14 @@ export const statusPageRouter = createTRPCRouter({
           data: filledData,
           cardType: effectiveCardType,
           barType: effectiveBarType,
+          timeZone,
         });
         const uptime = getUptime({
           data: filledData,
           events,
           barType: effectiveBarType,
           cardType: effectiveCardType,
+          timeZone,
         });
 
         return {

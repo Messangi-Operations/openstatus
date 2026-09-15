@@ -148,13 +148,47 @@ export function getMetricsRegionsProcedure(period: Period, type: Type) {
   }
 }
 
-export function getStatusProcedure(_period: "45d", type: Type) {
+function utcStatusPipe(type: Type) {
   if (type === "dns") return tb.dnsStatus45d;
   if (type === "http") return tb.httpStatus45d;
   if (type === "tcp") return tb.tcpStatus45d;
   if (type === "icmp") return tb.icmpStatus45d;
   if (type === "grpc") return tb.grpcStatus45d;
   throw new TRPCError({ code: "NOT_FOUND", message: "Invalid type" });
+}
+
+function zonedStatusPipe(type: Type) {
+  if (type === "dns") return tb.dnsStatus45dTz;
+  if (type === "http") return tb.httpStatus45dTz;
+  if (type === "tcp") return tb.tcpStatus45dTz;
+  if (type === "icmp") return tb.icmpStatus45dTz;
+  if (type === "grpc") return tb.grpcStatus45dTz;
+  throw new TRPCError({ code: "NOT_FOUND", message: "Invalid type" });
+}
+
+/**
+ * Daily status buckets for a status page, grouped in `tz`.
+ *
+ * "UTC" — the default, and what every page gets unless it has configured
+ * otherwise — keeps the existing materialized-view pipes. Their day boundary
+ * already IS UTC midnight, they are pre-aggregated and cached, and switching
+ * them would be a pure regression.
+ *
+ * Any other zone falls through to the `*_tz` pipes, which re-group the RAW
+ * datasource per request because a materialized view has its boundary baked
+ * into the stored rows and cannot be re-cut afterwards. That read is more
+ * expensive, which is exactly why it is gated on the page asking for it, and
+ * why `since` is passed: without a lower bound the raw scan has no horizon.
+ */
+export function getStatusProcedure(_period: "45d", type: Type, tz?: string) {
+  if (tz != null && tz !== "UTC") {
+    const pipe = zonedStatusPipe(type);
+    return (args: { monitorIds: string[]; since?: number }) =>
+      pipe({ monitorIds: args.monitorIds, tz, since: args.since });
+  }
+  const pipe = utcStatusPipe(type);
+  return (args: { monitorIds: string[]; since?: number }) =>
+    pipe({ monitorIds: args.monitorIds });
 }
 
 export function getGetProcedure(period: "14d", type: Type) {

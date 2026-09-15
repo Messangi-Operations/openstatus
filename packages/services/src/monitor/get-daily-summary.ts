@@ -18,6 +18,15 @@ export async function fetchMonitorDailyStats(args: {
   tb: OSTinybird;
   monitorIds: number[];
   workspaceId: number;
+  /**
+   * Zone to group the daily buckets in. Omitted or "UTC" keeps the
+   * materialized-view pipes, whose boundary already IS UTC midnight; any other
+   * zone reads the raw datasource, which is the only place the boundary can
+   * still be re-cut.
+   */
+  tz?: string;
+  /** Lower bound for the zoned raw read; ignored by the UTC pipes. */
+  since?: number;
 }): Promise<StatusData[]> {
   const ids = Array.from(new Set(args.monitorIds));
   if (ids.length === 0) return [];
@@ -58,6 +67,19 @@ export async function fetchMonitorDailyStats(args: {
       .filter((jobType) => idsByJobType[jobType].length > 0)
       .map((jobType) => {
         const monitorIds = idsByJobType[jobType];
+        if (args.tz != null && args.tz !== "UTC") {
+          const pipe =
+            jobType === "http"
+              ? args.tb.httpStatus45dTz
+              : jobType === "tcp"
+                ? args.tb.tcpStatus45dTz
+                : jobType === "dns"
+                  ? args.tb.dnsStatus45dTz
+                  : jobType === "icmp"
+                    ? args.tb.icmpStatus45dTz
+                    : args.tb.grpcStatus45dTz;
+          return pipe({ monitorIds, tz: args.tz, since: args.since });
+        }
         const pipe =
           jobType === "http"
             ? args.tb.httpStatus45d
