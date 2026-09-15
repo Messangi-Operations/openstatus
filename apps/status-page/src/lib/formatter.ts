@@ -1,5 +1,29 @@
-import { UTCDate } from "@date-fns/utc";
-import { endOfDay, isSameDay, startOfDay } from "date-fns";
+/**
+ * Day-boundary helpers evaluated in an arbitrary IANA zone.
+ *
+ * Deliberately NOT date-fns + TZDate: `@date-fns/tz` requires date-fns v4's
+ * generic-date support and this workspace is on 3.6.0, where
+ * `startOfDay(new TZDate(d, "UTC"))` silently falls back to the HOST's local
+ * zone (verified: it returned the previous day at 05:00Z). Intl is exact and
+ * needs no dependency.
+ */
+// "en-CA" yields YYYY-MM-DD, so string equality is calendar-day equality.
+const dayKeyIn = (d: Date, timeZone: string) =>
+  d.toLocaleDateString("en-CA", { timeZone });
+
+const isSameDayIn = (a: Date, b: Date, timeZone: string) =>
+  dayKeyIn(a, timeZone) === dayKeyIn(b, timeZone);
+
+const clockIn = (d: Date, timeZone: string) =>
+  d.toLocaleTimeString("en-GB", { timeZone, hour12: false });
+
+// Whole-day detection: is this instant exactly midnight / the last second of a
+// day, as read in the display zone?
+const isStartOfDayIn = (d: Date, timeZone: string) =>
+  clockIn(d, timeZone) === "00:00:00";
+
+const isEndOfDayIn = (d: Date, timeZone: string) =>
+  clockIn(d, timeZone) === "23:59:59";
 
 export function formatMilliseconds(ms: number) {
   if (ms > 1000) {
@@ -62,27 +86,29 @@ export function formatDate(
     year: "numeric",
     month: "long",
     day: "numeric",
-    ...rest,
-    // last so callers can't override away from UTC (the "(UTC)" label depends on it)
+    // UTC is the DEFAULT, not a lock: the status-blocks provider passes the
+    // page's configured zone through `options`. Anything that must stay in UTC
+    // (the uptime tracker's day buckets) simply omits it.
     timeZone: "UTC",
+    ...rest,
   });
 }
 
-export function formatDateTime(date: Date, locale?: string) {
+export function formatDateTime(date: Date, locale?: string, timeZone = "UTC") {
   return date.toLocaleDateString(locale, {
     month: "long",
     day: "numeric",
     hour: "numeric",
     minute: "numeric",
-    timeZone: "UTC",
+    timeZone,
   });
 }
 
-export function formatTime(date: Date, locale?: string) {
+export function formatTime(date: Date, locale?: string, timeZone = "UTC") {
   return date.toLocaleTimeString(locale, {
     hour: "numeric",
     minute: "numeric",
-    timeZone: "UTC",
+    timeZone,
   });
 }
 
@@ -95,56 +121,63 @@ export function formatDateRangeParts(
   from: Date,
   to: Date,
   locale?: string,
+  timeZone = "UTC",
 ): { from: string; to: string } {
-  if (isSameDay(new UTCDate(from), new UTCDate(to))) {
+  // Day boundaries must be evaluated in the SAME zone the strings render in.
+  // Checking "is this a whole day?" in UTC while printing in America/Bogota
+  // labels a UTC-aligned window as a single Bogota day, which it is not.
+  if (isSameDayIn(from, to, timeZone)) {
     return {
-      from: formatDateTime(from, locale),
-      to: formatTime(to, locale),
+      from: formatDateTime(from, locale, timeZone),
+      to: formatTime(to, locale, timeZone),
     };
   }
-  const isFromStartDay =
-    startOfDay(new UTCDate(from)).getTime() === from.getTime();
-  const isToEndDay = endOfDay(new UTCDate(to)).getTime() === to.getTime();
+  const isFromStartDay = isStartOfDayIn(from, timeZone);
+  const isToEndDay = isEndOfDayIn(to, timeZone);
   if (isFromStartDay && isToEndDay) {
     return {
-      from: formatDate(from, { locale }),
-      to: formatDate(to, { locale }),
+      from: formatDate(from, { locale, timeZone }),
+      to: formatDate(to, { locale, timeZone }),
     };
   }
   return {
-    from: formatDateTime(from, locale),
-    to: formatDateTime(to, locale),
+    from: formatDateTime(from, locale, timeZone),
+    to: formatDateTime(to, locale, timeZone),
   };
 }
 
-export function formatDateRange(from?: Date, to?: Date, locale?: string) {
-  const sameDay = from && to && isSameDay(new UTCDate(from), new UTCDate(to));
-  const isFromStartDay =
-    from && startOfDay(new UTCDate(from)).getTime() === from.getTime();
-  const isToEndDay = to && endOfDay(new UTCDate(to)).getTime() === to.getTime();
+export function formatDateRange(
+  from?: Date,
+  to?: Date,
+  locale?: string,
+  timeZone = "UTC",
+) {
+  const sameDay = from && to && isSameDayIn(from, to, timeZone);
+  const isFromStartDay = from && isStartOfDayIn(from, timeZone);
+  const isToEndDay = to && isEndOfDayIn(to, timeZone);
 
   if (sameDay) {
     if (from.getTime() === to.getTime()) {
-      return formatDateTime(from, locale);
+      return formatDateTime(from, locale, timeZone);
     }
     if (from && to) {
-      return `${formatDateTime(from, locale)} - ${formatTime(to, locale)}`;
+      return `${formatDateTime(from, locale, timeZone)} - ${formatTime(to, locale, timeZone)}`;
     }
   }
 
   if (from && to) {
     if (isFromStartDay && isToEndDay) {
-      return `${formatDate(from, { locale })} - ${formatDate(to, { locale })}`;
+      return `${formatDate(from, { locale, timeZone })} - ${formatDate(to, { locale, timeZone })}`;
     }
-    return `${formatDateTime(from, locale)} - ${formatDateTime(to, locale)}`;
+    return `${formatDateTime(from, locale, timeZone)} - ${formatDateTime(to, locale, timeZone)}`;
   }
 
   if (to) {
-    return `Until ${formatDateTime(to, locale)}`;
+    return `Until ${formatDateTime(to, locale, timeZone)}`;
   }
 
   if (from) {
-    return `Since ${formatDateTime(from, locale)}`;
+    return `Since ${formatDateTime(from, locale, timeZone)}`;
   }
 
   return "All time";

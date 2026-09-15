@@ -14,8 +14,26 @@ import {
   formatDateTime,
 } from "../../lib/formatter";
 
-// Status-page timestamps render in UTC; the suffix tells viewers which zone.
-const withUTC = (value: string) => `${value} (UTC)`;
+/**
+ * Short label for the zone actually being rendered ("UTC", "GMT-5", "CST"),
+ * appended so a viewer knows which clock they are reading. Derived from Intl
+ * rather than stored, so it stays correct across DST for zones that observe it.
+ *
+ * Falls back to the raw zone id if Intl gives nothing useful.
+ */
+function zoneLabel(timeZone: string, locale: string) {
+  try {
+    const part = new Intl.DateTimeFormat(locale, {
+      timeZone,
+      timeZoneName: "short",
+    })
+      .formatToParts(new Date())
+      .find((p) => p.type === "timeZoneName");
+    return part?.value ?? timeZone;
+  } catch {
+    return timeZone;
+  }
+}
 
 /**
  * StatusBlocksProvider
@@ -30,11 +48,20 @@ const withUTC = (value: string) => `${value} (UTC)`;
  */
 export function StatusBlocksProvider({
   children,
+  timeZone = "UTC",
 }: {
   children: React.ReactNode;
+  /**
+   * IANA zone for this page, resolved on the SERVER and passed in. Never read
+   * from config inside this component: it is a client component, so a value
+   * computed here would differ between SSR and hydration.
+   */
+  timeZone?: string;
 }) {
   const t = useExtracted();
   const locale = useLocale();
+  const withZone = (value: string) =>
+    `${value} (${zoneLabel(timeZone, locale)})`;
 
   const value = useMemo<StatusBlocksLabels>(
     () => ({
@@ -116,19 +143,28 @@ export function StatusBlocksProvider({
       durationAcross: (duration: string) =>
         t("across {duration}", { duration }),
 
-      formatDate: (d: Date) => withUTC(formatDate(d, { locale })),
+      formatDate: (d: Date) => withZone(formatDate(d, { locale, timeZone })),
+      // NOT zoned: the uptime tracker feeds this UTC day-bucket strings
+      // ("2024-01-15"), which are midnight UTC. Shifting them into a western
+      // zone moves every bar to the previous day. Day buckets stay UTC.
       formatDateShort: (d: Date) => formatDate(d, { month: "short", locale }),
-      formatDateTime: (d: Date) => withUTC(formatDateTime(d, locale)),
+      formatDateTime: (d: Date) =>
+        withZone(formatDateTime(d, locale, timeZone)),
       formatDateRange: (from?: Date, to?: Date) => {
-        const range = formatDateRange(from, to, locale);
-        return from || to ? withUTC(range) : range;
+        const range = formatDateRange(from, to, locale, timeZone);
+        return from || to ? withZone(range) : range;
       },
       formatDateRangeParts: (from: Date, to: Date) => {
-        const { from: start, to: end } = formatDateRangeParts(from, to, locale);
-        return { from: start, to: withUTC(end) };
+        const { from: start, to: end } = formatDateRangeParts(
+          from,
+          to,
+          locale,
+          timeZone,
+        );
+        return { from: start, to: withZone(end) };
       },
     }),
-    [t, locale],
+    [t, locale, timeZone],
   );
 
   return (

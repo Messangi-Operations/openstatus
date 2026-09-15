@@ -1,6 +1,7 @@
 "use client";
 
 import { UTCDate } from "@date-fns/utc";
+import { useStatusBlocksLabels } from "@openstatus/ui/components/blocks/status-i18n";
 import {
   HoverCard,
   HoverCardContent,
@@ -180,6 +181,12 @@ function SimpleTimestamp({
   children,
   ...props
 }: Omit<SimpleVariantProps, "variant">) {
+  // The status banner renders <StatusTimestamp date={…}/> with NO children, so
+  // this fallback is the most prominent timestamp on the page — the one beside
+  // "All Systems Operational". It used to hardcode UTC, which meant the banner
+  // disagreed with every other timestamp once a page configured a zone. Reuse
+  // the labels formatter so it renders in the page's zone with the right suffix.
+  const labels = useStatusBlocksLabels();
   return (
     <TooltipProvider>
       <Tooltip>
@@ -190,7 +197,7 @@ function SimpleTimestamp({
           )}
           {...props}
         >
-          {children || format(new UTCDate(date), "LLL dd, y HH:mm '(UTC)'")}
+          {children || labels.formatDateTime(date)}
         </TooltipTrigger>
         <TooltipContent data-slot="status-timestamp-content">
           <p className="font-mono">{format(date, "LLL dd, y HH:mm (z)")}</p>

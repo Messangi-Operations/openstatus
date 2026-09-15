@@ -33,13 +33,20 @@ describe("formatter UTC rendering", () => {
       );
     });
 
-    test("ignores a caller attempt to override the timezone", () => {
-      // 01:00 UTC is still Jan 14 in New York, so a leaked override would read "January 14".
+    test("defaults to UTC when no zone is given", () => {
+      expect(formatDate(new Date("2024-01-15T01:00:00Z"))).toBe(
+        "January 15, 2024",
+      );
+    });
+
+    test("honours a caller-supplied zone", () => {
+      // 01:00 UTC is still Jan 14 in New York. UTC is now a DEFAULT, not a
+      // lock: the status-blocks provider passes the page's configured zone.
       expect(
         formatDate(new Date("2024-01-15T01:00:00Z"), {
           timeZone: "America/New_York",
         }),
-      ).toBe("January 15, 2024");
+      ).toBe("January 14, 2024");
     });
   });
 
