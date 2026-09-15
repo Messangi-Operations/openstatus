@@ -1396,6 +1396,171 @@ export class OSTinybird {
     });
   }
 
+  /**
+   * Daily status buckets grouped in the status page's configured IANA zone.
+   *
+   * Reads the RAW datasource rather than mv__*_status_45d, because the
+   * materialized view bakes a UTC day boundary into its stored rows and that
+   * cannot be re-cut afterwards. Raw has no TTL and keeps millisecond
+   * timestamps, so the window is re-grouped per request. Omitting `tz` yields
+   * 'UTC' and reproduces the materialized view's boundaries exactly.
+   */
+  public get httpStatus45dTz() {
+    return this.tb.buildPipe({
+      pipe: "endpoint__http_status_45d_tz__v0",
+      parameters: z.object({
+        monitorIds: z.string().array(),
+        tz: z.string().optional(),
+        since: z.number().optional(),
+      }),
+      data: z.object({
+        day: z.string().transform((val) => {
+          // Same " GMT" parse as the UTC endpoints: the pipe renders the
+          // bucket start as a UTC instant precisely so this stays valid.
+          return new Date(`${val} GMT`).toISOString();
+        }),
+        count: z.number().prefault(0),
+        ok: z.number().prefault(0),
+        degraded: z.number().prefault(0),
+        error: z.number().prefault(0),
+        monitorId: z.coerce.string(),
+      }),
+      opts: { next: { revalidate: REVALIDATE } },
+    });
+  }
+
+  /**
+   * Daily status buckets grouped in the status page's configured IANA zone.
+   *
+   * Reads the RAW datasource rather than mv__*_status_45d, because the
+   * materialized view bakes a UTC day boundary into its stored rows and that
+   * cannot be re-cut afterwards. Raw has no TTL and keeps millisecond
+   * timestamps, so the window is re-grouped per request. Omitting `tz` yields
+   * 'UTC' and reproduces the materialized view's boundaries exactly.
+   */
+  public get tcpStatus45dTz() {
+    return this.tb.buildPipe({
+      pipe: "endpoint__tcp_status_45d_tz__v0",
+      parameters: z.object({
+        monitorIds: z.string().array(),
+        tz: z.string().optional(),
+        since: z.number().optional(),
+      }),
+      data: z.object({
+        day: z.string().transform((val) => {
+          // Same " GMT" parse as the UTC endpoints: the pipe renders the
+          // bucket start as a UTC instant precisely so this stays valid.
+          return new Date(`${val} GMT`).toISOString();
+        }),
+        count: z.number().prefault(0),
+        ok: z.number().prefault(0),
+        degraded: z.number().prefault(0),
+        error: z.number().prefault(0),
+        monitorId: z.coerce.string(),
+      }),
+      opts: { next: { revalidate: REVALIDATE } },
+    });
+  }
+
+  /**
+   * Daily status buckets grouped in the status page's configured IANA zone.
+   *
+   * Reads the RAW datasource rather than mv__*_status_45d, because the
+   * materialized view bakes a UTC day boundary into its stored rows and that
+   * cannot be re-cut afterwards. Raw has no TTL and keeps millisecond
+   * timestamps, so the window is re-grouped per request. Omitting `tz` yields
+   * 'UTC' and reproduces the materialized view's boundaries exactly.
+   */
+  public get dnsStatus45dTz() {
+    return this.tb.buildPipe({
+      pipe: "endpoint__dns_status_45d_tz__v0",
+      parameters: z.object({
+        monitorIds: z.string().array(),
+        tz: z.string().optional(),
+        since: z.number().optional(),
+      }),
+      data: z.object({
+        day: z.string().transform((val) => {
+          // Same " GMT" parse as the UTC endpoints: the pipe renders the
+          // bucket start as a UTC instant precisely so this stays valid.
+          return new Date(`${val} GMT`).toISOString();
+        }),
+        count: z.number().prefault(0),
+        ok: z.number().prefault(0),
+        degraded: z.number().prefault(0),
+        error: z.number().prefault(0),
+        monitorId: z.coerce.string(),
+      }),
+      opts: { next: { revalidate: REVALIDATE } },
+    });
+  }
+
+  /**
+   * Daily status buckets grouped in the status page's configured IANA zone.
+   *
+   * Reads the RAW datasource rather than mv__*_status_45d, because the
+   * materialized view bakes a UTC day boundary into its stored rows and that
+   * cannot be re-cut afterwards. Raw has no TTL and keeps millisecond
+   * timestamps, so the window is re-grouped per request. Omitting `tz` yields
+   * 'UTC' and reproduces the materialized view's boundaries exactly.
+   */
+  public get icmpStatus45dTz() {
+    return this.tb.buildPipe({
+      pipe: "endpoint__icmp_status_45d_tz__v0",
+      parameters: z.object({
+        monitorIds: z.string().array(),
+        tz: z.string().optional(),
+        since: z.number().optional(),
+      }),
+      data: z.object({
+        day: z.string().transform((val) => {
+          // Same " GMT" parse as the UTC endpoints: the pipe renders the
+          // bucket start as a UTC instant precisely so this stays valid.
+          return new Date(`${val} GMT`).toISOString();
+        }),
+        count: z.number().prefault(0),
+        ok: z.number().prefault(0),
+        degraded: z.number().prefault(0),
+        error: z.number().prefault(0),
+        monitorId: z.coerce.string(),
+      }),
+      opts: { next: { revalidate: REVALIDATE } },
+    });
+  }
+
+  /**
+   * Daily status buckets grouped in the status page's configured IANA zone.
+   *
+   * Reads the RAW datasource rather than mv__*_status_45d, because the
+   * materialized view bakes a UTC day boundary into its stored rows and that
+   * cannot be re-cut afterwards. Raw has no TTL and keeps millisecond
+   * timestamps, so the window is re-grouped per request. Omitting `tz` yields
+   * 'UTC' and reproduces the materialized view's boundaries exactly.
+   */
+  public get grpcStatus45dTz() {
+    return this.tb.buildPipe({
+      pipe: "endpoint__grpc_status_45d_tz__v0",
+      parameters: z.object({
+        monitorIds: z.string().array(),
+        tz: z.string().optional(),
+        since: z.number().optional(),
+      }),
+      data: z.object({
+        day: z.string().transform((val) => {
+          // Same " GMT" parse as the UTC endpoints: the pipe renders the
+          // bucket start as a UTC instant precisely so this stays valid.
+          return new Date(`${val} GMT`).toISOString();
+        }),
+        count: z.number().prefault(0),
+        ok: z.number().prefault(0),
+        degraded: z.number().prefault(0),
+        error: z.number().prefault(0),
+        monitorId: z.coerce.string(),
+      }),
+      opts: { next: { revalidate: REVALIDATE } },
+    });
+  }
+
   public get httpWorkspace30d() {
     return this.tb.buildPipe({
       pipe: "endpoint__http_workspace_30d__v0",

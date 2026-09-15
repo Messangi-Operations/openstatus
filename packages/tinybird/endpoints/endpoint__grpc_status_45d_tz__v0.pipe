@@ -1,0 +1,41 @@
+NODE endpoint
+SQL >
+
+%
+--
+-- Daily status buckets grouped in an ARBITRARY IANA zone, read from the RAW
+-- response datasource instead of mv__grpc_status_45d.
+--
+-- Why raw: the materialized view bakes `toStartOfDay(..., 'UTC')` into the
+-- stored rows, so its day boundary cannot be re-cut after the fact. The raw
+-- datasources carry no TTL and keep millisecond `cronTimestamp`, so the same
+-- window can be re-grouped per request in whatever zone the status page is
+-- configured for. Nothing is stored per zone; there is no backfill.
+--
+-- The OUTER toTimeZone(..., 'UTC') is load-bearing: the client appends " GMT"
+-- to the returned string before parsing, so the instant must be rendered in UTC
+-- or every bucket lands an offset away.
+--
+-- `tz` defaults to 'UTC', which reproduces the materialized view's boundaries
+-- exactly — an unconfigured page is byte-identical to the old endpoint.
+--
+SELECT
+    toTimeZone(
+        toStartOfDay(
+            toTimeZone(fromUnixTimestamp64Milli(cronTimestamp), {{ String(tz, 'UTC') }})
+        ),
+        'UTC'
+    ) AS day,
+    monitorId,
+    count() AS count,
+    countIf(requestStatus = 'success') AS ok,
+    countIf(requestStatus = 'error') AS error,
+    countIf(requestStatus = 'degraded') AS degraded
+FROM grpc_response__v0
+WHERE
+    monitorId IN {{ Array(monitorIds, 'String', '4433') }}
+    AND cronTimestamp >= {{ Int64(since, 0) }}
+GROUP BY day, monitorId
+ORDER BY day DESC
+
+TYPE endpoint
