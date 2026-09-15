@@ -373,9 +373,19 @@ function wallClockParts(
   };
 }
 
-/** "Jan 25, 2026" in the page's zone (UTC when none is configured). */
+/**
+ * "Jan 25, 2026" in the page's zone (UTC when none is configured).
+ *
+ * Invalid input yields "—", the same placeholder `formatDayTime` already uses.
+ * Guarded BEFORE the zone branch on purpose: `Intl.formatToParts` throws on an
+ * invalid Date while the UTC arithmetic path silently rendered "undefined NaN,
+ * NaN", so the two branches disagreed about the same bad input — one 500'd the
+ * whole .md route on a zoned page, the other shipped garbage on a UTC one. The
+ * UTC output this replaces was never meaningful, so nothing legible is lost.
+ */
 export function formatDay(date: Date | string | number, tz = "UTC"): string {
   const d = toDate(date);
+  if (Number.isNaN(d.getTime())) return "—";
   if (tz === "UTC") {
     return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
   }
@@ -406,12 +416,25 @@ export function formatDayTime(
   return `${MONTHS[w.month - 1]} ${w.day}, ${hour12}:${minutes} ${period}`;
 }
 
-/** "2026-06-18 14:50" in the page's zone (sortable, fixed-width). */
+/**
+ * "2026-06-18 14:50" in the page's zone. Fixed-width, 16 characters.
+ *
+ * NOT lexically sortable on a page whose zone observes DST: the fall-back hour
+ * repeats, so two instants an hour apart render the same stamp and a later
+ * instant can render an earlier one. `eventLog` emits rows in true instant
+ * order and THAT order is authoritative; the stamp is a label, not a key.
+ * (No effect on America/Bogota, which has no DST.)
+ *
+ * Invalid input yields a same-width marker rather than throwing — see
+ * `formatDay`. The marker keeps the log's columns aligned and cannot be
+ * mistaken for, or parsed as, a real timestamp.
+ */
 export function formatLogStamp(
   date: Date | string | number,
   tz = "UTC",
 ): string {
   const d = toDate(date);
+  if (Number.isNaN(d.getTime())) return "????-??-?? ??:??";
   const w =
     tz === "UTC"
       ? {
@@ -438,10 +461,14 @@ export type EventLogRow = {
 };
 
 /**
- * Greppable event log: one update per line, sortable stamp first, newest first.
+ * Greppable event log: one update per line, stamp first, newest first.
  * Structured columns (stamp/status/ref/glyph) precede the user-authored title,
  * which trails as free text. Newlines are stripped from the title so it can't
  * inject a line that closes the fenced block.
+ *
+ * Rows are sorted by the underlying INSTANT, which is the authoritative order.
+ * Do not re-sort downstream on the rendered stamp: on a DST page it is not a
+ * total order (see `formatLogStamp`).
  */
 export function eventLog(rows: EventLogRow[], tz = "UTC"): string {
   if (rows.length === 0) return "";
@@ -487,6 +514,9 @@ function zoneStampLabel(d: Date, tz: string): string {
 /** "Jun 18, 2026 14:50 (GMT+0)" — page zone, offset shown explicitly. */
 export function formatStamp(date: Date | string | number, tz = "UTC"): string {
   const d = toDate(date);
+  // Same branch-asymmetry guard as `formatDay`: the zoned path would throw
+  // where the UTC path rendered "undefined NaN, NaN (GMT+0)".
+  if (Number.isNaN(d.getTime())) return "—";
   if (tz === "UTC") {
     const hh = String(d.getUTCHours()).padStart(2, "0");
     const mm = String(d.getUTCMinutes()).padStart(2, "0");
