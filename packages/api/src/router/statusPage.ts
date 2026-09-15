@@ -1276,8 +1276,9 @@ export const statusPageRouter = createTRPCRouter({
         monitorTz,
         7,
       ).toISOString();
-      const toDate = new Date(dayWindowIn(new Date(), monitorTz).end)
-        .toISOString();
+      const toDate = new Date(
+        dayWindowIn(new Date(), monitorTz).end,
+      ).toISOString();
 
       // Slow/erroring Tinybird → empty chart data so the page still renders.
       const metrics = !procedures

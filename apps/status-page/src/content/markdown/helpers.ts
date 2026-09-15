@@ -407,7 +407,10 @@ export function formatDayTime(
 }
 
 /** "2026-06-18 14:50" in the page's zone (sortable, fixed-width). */
-export function formatLogStamp(date: Date | string | number, tz = "UTC"): string {
+export function formatLogStamp(
+  date: Date | string | number,
+  tz = "UTC",
+): string {
   const d = toDate(date);
   const w =
     tz === "UTC"

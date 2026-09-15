@@ -103,23 +103,17 @@ export default function Page() {
     // must not decide the data shape.
     const grouped = monitor.data.regions.data
       .sort((a, b) => a.timestamp - b.timestamp)
-      .reduce(
-        (acc, item) => {
-          let bucket = acc.get(item.timestamp);
-          if (!bucket) {
-            bucket = {
-              timestamp: formatChartTimestamp(item.timestamp, locale, timeZone),
-            };
-            acc.set(item.timestamp, bucket);
-          }
-          bucket[item.region] = item.p75Latency;
-          return acc;
-        },
-        new Map<
-          number,
-          { timestamp: string; [region: string]: number | string | null }
-        >(),
-      );
+      .reduce((acc, item) => {
+        let bucket = acc.get(item.timestamp);
+        if (!bucket) {
+          bucket = {
+            timestamp: formatChartTimestamp(item.timestamp, locale, timeZone),
+          };
+          acc.set(item.timestamp, bucket);
+        }
+        bucket[item.region] = item.p75Latency;
+        return acc;
+      }, new Map<number, { timestamp: string; [region: string]: number | string | null }>());
 
     return [...grouped.values()];
   }, [monitor?.data.regions?.data, locale, timeZone]);
