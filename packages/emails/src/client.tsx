@@ -127,8 +127,8 @@ export class EmailClient {
     try {
       const html = await render(<FollowUpEmail />);
       const result = await this.client.emails.send({
-        from: "Messangi <notifications@messangi.com>",
-        replyTo: "Messangi <notifications@messangi.com>",
+        from: "Messangi <status@messangi.com>",
+        replyTo: "Messangi <status@messangi.com>",
         subject: "How's it going with OpenStatus?",
         to: req.to,
         html,
@@ -154,7 +154,7 @@ export class EmailClient {
     const html = await render(<FollowUpEmail />);
     const result = await this.client.batch.send(
       req.to.map((subscriber) => ({
-        from: "Messangi <notifications@messangi.com>",
+        from: "Messangi <status@messangi.com>",
         subject: "How's it going with OpenStatus?",
         to: subscriber,
         html,
@@ -185,8 +185,8 @@ export class EmailClient {
     try {
       const html = await render(<SlackFeedbackEmail />);
       const result = await this.client.emails.send({
-        from: "Messangi <notifications@messangi.com>",
-        replyTo: "Messangi <notifications@messangi.com>",
+        from: "Messangi <status@messangi.com>",
+        replyTo: "Messangi <status@messangi.com>",
         subject: "How's the Slack app working for you?",
         to: req.to,
         html,
@@ -212,7 +212,7 @@ export class EmailClient {
     const html = await render(<SlackFeedbackEmail />);
     const result = await this.client.batch.send(
       req.to.map((subscriber) => ({
-        from: "Messangi <notifications@messangi.com>",
+        from: "Messangi <status@messangi.com>",
         subject: "How's the Slack app working for you?",
         to: subscriber,
         html,
@@ -273,7 +273,7 @@ export class EmailClient {
               const unsubscribeUrl = `${statusPageBaseUrl}/unsubscribe/${subscriber.token}`;
               const manageUrl = `${statusPageBaseUrl}/manage/${subscriber.token}`;
               return {
-                from: `${req.pageTitle} <notifications@notifications.messangi.me>`,
+                from: `${req.pageTitle} <status@messangi.com>`,
                 subject: statusReportSubject(req),
                 to: subscriber.email,
                 react: (
@@ -323,7 +323,7 @@ export class EmailClient {
       const result = await this.client.emails.send({
         from: `${
           req.workspaceName ?? "Messangi"
-        } <notifications@notifications.messangi.me>`,
+        } <status@messangi.com>`,
         subject: `You've been invited to join ${
           req.workspaceName ?? "Messangi"
         }`,
@@ -352,7 +352,7 @@ export class EmailClient {
       // const html = await render(<MonitorAlertEmail {...req} />);
       const html = monitorAlertEmail(req);
       const result = await this.client.emails.send({
-        from: "Messangi Status <notifications@notifications.messangi.me>",
+        from: "Messangi Status <status@messangi.com>",
         subject: `${req.name}: ${req.type.toUpperCase()}`,
         to: req.to,
         html,
@@ -381,7 +381,7 @@ export class EmailClient {
     try {
       const html = await render(<PageSubscriptionEmail {...req} />);
       const result = await this.client.emails.send({
-        from: "Messangi Status <notifications@notifications.messangi.me>",
+        from: "Messangi Status <status@messangi.com>",
         subject: `Confirm your subscription to ${req.page}`,
         to: req.to,
         html,
@@ -410,7 +410,7 @@ export class EmailClient {
     try {
       const html = await render(<StatusPageMagicLinkEmail {...req} />);
       const result = await this.client.emails.send({
-        from: "Messangi Status <notifications@notifications.messangi.me>",
+        from: "Messangi Status <status@messangi.com>",
         subject: `Authenticate to ${req.page}`,
         to: req.to,
         html,
@@ -465,7 +465,7 @@ export class EmailClient {
               const unsubscribeUrl = `${statusPageBaseUrl}/unsubscribe/${subscriber.token}`;
               const manageUrl = `${statusPageBaseUrl}/manage/${subscriber.token}`;
               return {
-                from: `${req.pageTitle} <notifications@notifications.messangi.me>`,
+                from: `${req.pageTitle} <status@messangi.com>`,
                 subject: `Scheduled Maintenance: ${req.maintenanceTitle}`,
                 to: subscriber.email,
                 react: (
@@ -538,7 +538,7 @@ export class EmailClient {
       );
       const result = await this.client.batch.send(
         req.to.map((to) => ({
-          from: "Messangi Status <notifications@notifications.messangi.me>",
+          from: "Messangi Status <status@messangi.com>",
           subject,
           to,
           html,

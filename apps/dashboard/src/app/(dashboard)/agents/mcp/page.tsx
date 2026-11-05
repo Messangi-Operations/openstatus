@@ -18,7 +18,7 @@ import {
   SectionTitle,
 } from "@/components/content/section";
 
-const ENDPOINT = "https://api.openstatus.dev/mcp";
+const ENDPOINT = "https://api.openstatus.messangi.me/mcp";
 
 const clients = [
   {

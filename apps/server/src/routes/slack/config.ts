@@ -35,7 +35,7 @@ export function slackConfigFromEnv(): SlackConfig {
     aiGatewayApiKey: env.AI_GATEWAY_API_KEY,
     dashboardUrl:
       env.NODE_ENV === "production"
-        ? "https://app.openstatus.dev"
+        ? env.DASHBOARD_URL || "https://openstatus.messangi.me"
         : "http://localhost:3000",
   };
 }

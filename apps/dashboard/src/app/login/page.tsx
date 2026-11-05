@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     follow: true,
   },
   alternates: {
-    canonical: "https://app.openstatus.dev/login",
+    canonical: "https://openstatus.messangi.me/login",
   },
 };
 

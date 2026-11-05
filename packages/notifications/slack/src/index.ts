@@ -201,7 +201,7 @@ export const sendTestSlackMessage = async (webhookUrl: string) => {
                     text: "View Dashboard",
                     emoji: true,
                   },
-                  url: "https://app.openstatus.dev",
+                  url: "https://openstatus.messangi.me",
                   action_id: "view_dashboard",
                 },
               ],

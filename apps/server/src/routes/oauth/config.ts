@@ -20,11 +20,11 @@ export function oauthConfigFromEnv(): OAuthConfig {
   return {
     issuer: trimSlash(
       env.OAUTH_ISSUER ||
-        (production ? "https://api.openstatus.dev" : "http://localhost:3000"),
+        (production ? "https://api.openstatus.messangi.me" : "http://localhost:3000"),
     ),
     dashboardUrl: trimSlash(
       env.DASHBOARD_URL ||
-        (production ? "https://app.openstatus.dev" : "http://localhost:3001"),
+        (production ? "https://openstatus.messangi.me" : "http://localhost:3001"),
     ),
   };
 }

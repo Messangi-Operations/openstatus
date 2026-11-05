@@ -25,7 +25,7 @@ const SsoDisabledEmail = () => {
           <Text style={{ textAlign: "center" }}>
             <Button
               style={styles.button}
-              href="https://app.openstatus.dev/settings/billing"
+              href="https://openstatus.messangi.me/settings/billing"
             >
               View billing
             </Button>

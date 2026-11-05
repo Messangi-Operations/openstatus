@@ -229,7 +229,7 @@ app.get(
     url: "/openapi.yaml",
     servers: [
       {
-        url: "https://api.openstatus.dev/",
+        url: "https://api.openstatus.messangi.me/",
         description: "Production server",
       },
       {

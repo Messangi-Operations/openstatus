@@ -25,7 +25,7 @@ export async function getPageUrl(pageId: number): Promise<string | null> {
 
 function getDashboardBaseUrl(): string {
   return env.NODE_ENV === "production"
-    ? "https://app.openstatus.dev"
+    ? env.DASHBOARD_URL || "https://openstatus.messangi.me"
     : "http://localhost:3000";
 }
 

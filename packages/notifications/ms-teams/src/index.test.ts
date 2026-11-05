@@ -308,7 +308,7 @@ describe("Microsoft Teams Notifications", () => {
     const card = getCard(readMessagePayload());
     const header = findContainerByStyle(card, "good");
     expect(header?.items?.[0]?.text).toBe("Test notification");
-    expect(card.actions[0].url).toBe("https://app.openstatus.dev");
+    expect(card.actions[0].url).toBe("https://openstatus.messangi.me");
   });
 
   test("Send Test with empty webhookUrl", async () => {

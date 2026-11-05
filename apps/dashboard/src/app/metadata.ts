@@ -6,7 +6,7 @@ export const DESCRIPTION =
 
 const OG_TITLE = "openstatus";
 const OG_DESCRIPTION = "Monitor your services and keep your users informed.";
-const FOOTER = "app.openstatus.dev";
+const FOOTER = "openstatus.messangi.me";
 const IMAGE = "assets/og/dashboard-v2.png";
 
 export const defaultMetadata: Metadata = {

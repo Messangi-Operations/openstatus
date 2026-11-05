@@ -117,7 +117,7 @@ const FEATURE_CATEGORIES: { label: string; items: FeatureLinkItem[] }[] = [
     items: [
       {
         name: "REST API",
-        href: "https://api.openstatus.dev/openapi",
+        href: "https://api.openstatus.messangi.me/openapi",
         icon: Api,
         external: true,
       },

@@ -66,7 +66,7 @@ export function formatStatusCode(statusCode?: number): string {
  * //   timestampFormatted: "Jan 22, 2026 at 14:30 UTC",
  * //   regionsDisplay: "ams, fra, syd",
  * //   latencyDisplay: "2,450ms",
- * //   dashboardUrl: "https://app.openstatus.dev/monitors/123",
+ * //   dashboardUrl: "https://openstatus.messangi.me/monitors/123",
  * //   incidentDuration: undefined
  * // }
  *
@@ -117,7 +117,7 @@ export function buildCommonMessageData(
     regionsDisplay,
     latencyDisplay:
       typeof latency === "number" ? `${latency.toLocaleString()}ms` : "N/A",
-    dashboardUrl: `https://app.openstatus.dev/monitors/${monitor.id}`,
+    dashboardUrl: `https://openstatus.messangi.me/monitors/${monitor.id}`,
     incidentDuration,
   };
 }

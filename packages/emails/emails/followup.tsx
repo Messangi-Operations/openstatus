@@ -18,7 +18,7 @@ const FollowUpEmail = () => {
         an outage.
         <br />
         <br />👉{" "}
-        <a href="https://app.openstatus.dev/agents?ref=email-followup">
+        <a href="https://openstatus.messangi.me/agents?ref=email-followup">
           Install the Slack app
         </a>
         <br />

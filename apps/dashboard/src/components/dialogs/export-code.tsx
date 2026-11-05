@@ -28,7 +28,7 @@ const YML = `openstatus-marketing:
   regions: ["ams", "fra", "gru", "sin", "iad"]
   kind: "http"
   request:
-    url: https://api.openstatus.dev
+    url: https://api.openstatus.messangi.me
     method: GET`;
 
 export function ExportCodeDialog(props: DialogProps) {

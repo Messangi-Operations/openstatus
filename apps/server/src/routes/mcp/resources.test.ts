@@ -85,7 +85,7 @@ describe("public MCP resources", () => {
     const result = await readPublicResource(spec);
     const parsed = JSON.parse(String(result.contents[0].text));
     expect(parsed.openapi).toBe("3.1.0");
-    expect(parsed.servers[0].url).toBe("https://api.openstatus.dev");
+    expect(parsed.servers[0].url).toBe("https://api.openstatus.messangi.me");
   });
 });
 

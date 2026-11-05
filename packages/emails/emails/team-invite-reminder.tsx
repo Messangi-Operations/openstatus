@@ -17,7 +17,7 @@ const TeamInviteReminderEmail = () => {
         can update the status page.
         <br />
         <br />👉{" "}
-        <a href="https://app.openstatus.dev/settings/general?ref=email-team-invite">
+        <a href="https://openstatus.messangi.me/settings/general?ref=email-team-invite">
           Invite your team
         </a>
         <br />

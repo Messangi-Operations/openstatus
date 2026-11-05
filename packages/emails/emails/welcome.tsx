@@ -22,7 +22,7 @@ const WelcomeEmail = () => {
         services are up.
         <br />
         <br />👉{" "}
-        <a href="https://app.openstatus.dev/status-pages/create?ref=email-onboarding">
+        <a href="https://openstatus.messangi.me/status-pages/create?ref=email-onboarding">
           Create your status page
         </a>
         <br />

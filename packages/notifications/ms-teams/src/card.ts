@@ -272,7 +272,7 @@ export function buildTestCard(): AdaptiveCard {
       {
         type: "Action.OpenUrl",
         title: "View dashboard",
-        url: "https://app.openstatus.dev",
+        url: "https://openstatus.messangi.me",
       },
     ],
   };

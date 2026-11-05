@@ -21,7 +21,7 @@ import { useTRPC } from "@/lib/trpc/client";
 
 const SERVER_URL =
   process.env.NODE_ENV === "production"
-    ? "https://api.openstatus.dev"
+    ? "https://api.openstatus.messangi.me"
     : "http://localhost:3000";
 
 interface SlackIntegrationCardProps {

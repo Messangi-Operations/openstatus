@@ -46,7 +46,7 @@ function remote(resource: Omit<PublicResource, "read">): PublicResource {
 export const PUBLIC_RESOURCES: PublicResource[] = [
   {
     name: "openapi-specification",
-    uri: "https://api.openstatus.dev/openapi.json",
+    uri: "https://api.openstatus.messangi.me/openapi.json",
     title: "openstatus OpenAPI specification",
     description:
       "Machine-readable description of the openstatus HTTP API: every operation with a unique operationId, typed parameters, and response schemas.",

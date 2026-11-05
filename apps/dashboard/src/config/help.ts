@@ -29,7 +29,7 @@ export const HELP_LINKS = [
   },
   {
     label: "API Reference",
-    href: "https://api.openstatus.dev/openapi",
+    href: "https://api.openstatus.messangi.me/openapi",
     icon: Api,
     keywords: ["openapi", "swagger"],
   },

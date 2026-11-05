@@ -370,8 +370,8 @@ export function FloatingButton({
               <a
                 href={
                   pageId
-                    ? `https://app.openstatus.dev/status-pages/${pageId}/components?type=${barType}&value=${cardType}&uptime=${showUptime}&theme=${communityTheme}&days=${numberOfDays}`
-                    : "https://app.openstatus.dev/status-pages"
+                    ? `https://openstatus.messangi.me/status-pages/${pageId}/components?type=${barType}&value=${cardType}&uptime=${showUptime}&theme=${communityTheme}&days=${numberOfDays}`
+                    : "https://openstatus.messangi.me/status-pages"
                 }
                 target="_blank"
                 rel="noreferrer"
